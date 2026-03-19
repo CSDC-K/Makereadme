@@ -1,15 +1,26 @@
-pub mod debug;
+pub mod libs {
+    pub mod debug;
+    pub mod build;
+}
 
+pub mod apis {
+    pub mod api_lib;
+    pub mod groq;
+    pub mod gemini;
+    pub mod llmapi;
+    pub mod nvidia;
+}
 
-use std::io::{Write, stdin, stdout};
+use std::{io::{Write, stdin, stdout}, vec};
 
-use debug::*;           // DEBUG INFO
+use libs::debug::*;           // DEBUG INFO
+use libs::build::Build;      // Build Struct
 use colored::*;         // Cli Conf
 use inquire::Select;
 
 
 fn main() {
-    let llm_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
+    let api_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
     let banner : String = r#"
   _____  ______          _____  __  __ ______   __  __          _  ________ _____  
  |  __ \|  ____|   /\   |  __ \|  \/  |  ____| |  \/  |   /\   | |/ /  ____|  __ \ 
@@ -24,33 +35,67 @@ fn main() {
     println!("{}", banner.bright_yellow());
 
     println!("Welcome to Readme Maker V 0.0.1");
-
     
 
-    let mut llm_type = Select::new("Select LLM type:", llm_types_vec).prompt().unwrap();
-    let mut model_type = match_model_type(llm_type);
+    let mut api_type = Select::new("Select Api type:", api_types_vec).prompt().unwrap();
+    let mut model_type = match_model_type(api_type);
     let mut api_key : String = String::new();
-    let mut file_name : String = String::new();
+    let mut project_folder : String = String::new();
     let mut output_name : String = String::new();
 
     print!("~Api Key: ");
     stdout().flush().unwrap();
     stdin().read_line(&mut api_key).expect("ERROR AT API_KEY_INPUT");
 
-    print!("~File Name: ");
+    print!("~Project Folder: ");
     stdout().flush().unwrap();
-    stdin().read_line(&mut file_name).expect("ERROR AT API_KEY_INPUT");
+    stdin().read_line(&mut project_folder).expect("ERROR AT PROJECT_FOLDER_INPUT");
 
     print!("~Output File Name: ");
     stdout().flush().unwrap();
-    stdin().read_line(&mut output_name).expect("ERROR AT API_KEY_INPUT");
+    stdin().read_line(&mut output_name).expect("ERROR AT OUTPUT_INPUT");
 
     loop {
-        
+        printd!("Reading configs...", Debug);
+        printd!(format!("LLM API : {}", api_type).as_str(), Debug);
+        printd!(format!("MODEL TYPE : {}", model_type).as_str(), Debug);
+        printd!(format!("API KEY : {}", api_key.trim()).as_str(), Debug);
+        printd!(format!("PROJECT DIR : {}", project_folder.trim()).as_str(), Debug);
+        printd!(format!("OUTPUT FILE : {}", output_name.trim()).as_str(), Debug);
+        print!("Is that build true? (Y/N) ");
+        stdout().flush().unwrap();
+        let mut y_n = String::new();
+        stdin().read_line(&mut y_n).expect("ERROR AT BUILD_Y_N_INPUT");
+
+        let y_n_input = y_n.trim().chars().next();
+
+        let what_user_wants_to_change = match y_n_input {
+            Some('N') | Some('n') => {
+                Select::new("Which input you wanting to change?", vec!["API TYPE", "MODEL TYPE", "API KEY", "PROJECT FOLDER", "OUTPUT NAME"]).prompt().unwrap()
+            },
+            Some('Y') | Some('y') => { "" }
+
+            _ => {
+                printd!("Unkown input! Please answer correctly.", Failed);
+                continue
+            } ,
+        };
+
+        if (what_user_wants_to_change == "") {
+            let build = Build::new(
+                api_type.to_string(),
+                model_type,
+                api_key.trim().to_string(),
+                std::path::PathBuf::from(project_folder.trim()),
+                output_name.trim().to_string()
+            );
+            build.build();
+            break;
+        }
+
     }
 
 }
-
 
 fn match_model_type(llm_type : &str) -> String{
     let LLM_MODELS_GEMINI = vec!["GEMINI-2.5-FLASH-LITE","GEMINI-2.5-FLASH", "GEMINI-2.5-PRO", "GEMINI-3.0-FLASH-LITE", "GEMINI-3.0-FLASH", "GEMINI-3.0-PRO"];
