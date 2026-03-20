@@ -1,6 +1,7 @@
 pub mod libs {
     pub mod debug;
     pub mod build;
+    pub mod action_executer;
 }
 
 pub mod apis {
@@ -17,9 +18,11 @@ use libs::debug::*;           // DEBUG INFO
 use libs::build::Build;      // Build Struct
 use colored::*;         // Cli Conf
 use inquire::Select;
+use tokio::main;
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let api_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
     let banner : String = r#"
   _____  ______          _____  __  __ ______   __  __          _  ________ _____  
@@ -84,13 +87,13 @@ fn main() {
         if (what_user_wants_to_change == "") {
             let build = Build::new(
                 api_type.to_string(),
-                model_type,
+                model_type.clone(),
                 api_key.trim().to_string(),
                 std::path::PathBuf::from(project_folder.trim()),
                 output_name.trim().to_string()
             );
-            build.build();
-            break;
+            build.build().await;
+            
         }
 
     }
@@ -98,7 +101,7 @@ fn main() {
 }
 
 fn match_model_type(llm_type : &str) -> String{
-    let LLM_MODELS_GEMINI = vec!["GEMINI-2.5-FLASH-LITE","GEMINI-2.5-FLASH", "GEMINI-2.5-PRO", "GEMINI-3.0-FLASH-LITE", "GEMINI-3.0-FLASH", "GEMINI-3.0-PRO"];
+    let LLM_MODELS_GEMINI = vec!["gemini-2.5-flash-lite","gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-flash-lite", "gemini-3.0-flash", "gemini-3.0-pro"];
     let LLM_MODELS_GROQ = vec!["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3-32b"];
     
 

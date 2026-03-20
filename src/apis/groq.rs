@@ -3,7 +3,7 @@ use groq_api_rs::completion::{client::Groq, message::Message, request::builder, 
 use crate::printd;
 
 
-pub async fn CreateCommunication(api_key: String, prompt: String, model_type: String) {
+pub async fn create_communication(api_key: String, prompt: String, model_type: String) {
 
     let mut client = Groq::new(api_key.as_str());
     client.add_messages(vec![Message::SystemMessage {
