@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -142,22 +143,34 @@ pub async fn create_communication(
         .unwrap_or_default();
 
     loop {
+
+        time::Duration::from_secs(3);
+
+        let mut action_results = String::new();
+
         printd!(
             format!("Gemini response received ({} chars)", text.len()).as_str(),
             LLM
         );
 
+        printd!(format!("Gemini Response Text: {}", text).as_str(), LLM);
+        printd!("Parsing actions from Gemini response...", Debug);
+
         let actions = action_executer::parse_actions(&text);
 
         let actions_result = action_executer::execute_actions(actions, project_dir, "README.md");
-        let i = 1;
+        let mut i = 1;
+
         for action_result in actions_result {
             
             match action_result.success {
                 true => {
                     printd!(format!("Action {} : {:?}", i , action_result.action).as_str(), Success);
                     printd!(format!("Action {}'s Content : {:?}", i , action_result.action).as_str(), Success);
- 
+
+                    action_results.push_str(format!("Action {} executed successfully. Action: {:?}\n", i, action_result.content).as_str());
+                    i += 1;
+
 
                 }
 
@@ -165,15 +178,80 @@ pub async fn create_communication(
                     printd!("Found Broken Action Request!", Failed);
                     printd!(format!("Action {} : {:?}", i , action_result.action).as_str(), Failed);
                     printd!(format!("Action {}'s Content : {:?}", i , action_result.action).as_str(), Failed);
+
+                    action_results.push_str(format!("Action {} execution failed. Action: {:?}\n", i, action_result.content).as_str());
+                    i += 1;
+
                 }
 
             }
         }
 
+        text = create_gemini_response(api_key.clone(), client.clone(), url.clone(), action_results).await?;
 
     }
 
+}
 
+
+
+async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: String) -> Result<String, String> {
+
+    let response = client
+    .post(&url)
+    .header("x-goog-api-key", &api_key)
+    .header("Content-Type", "application/json")
+    .json(&GeminiRequest {
+        contents: vec![
+            Content {
+                parts: vec![Part {
+                    text: action_results,
+                }],
+                role: None,
+                
+            },
+        ],
+    })
+    .send()
+    .await
+    .map_err(|e| format!("Request failed: {}", e))?;
+
+    let status = response.status();
+
+    if (!status.is_success()) {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Could not read error body".to_string());
+        printd!(
+            format!("Gemini API error ({}): {}", status, error_text).as_str(),
+            Failed
+        );
+        return Err(format!("HTTP {}: {}", status, error_text));
+    }
+
+    let body = response
+        .json::<GeminiResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    if let Some(err) = body.error {
+        printd!(
+            format!("Gemini API returned error: {}", err.message).as_str(),
+            Failed
+        );
+        return Err(format!("Gemini error: {}", err.message));
+    }
+
+    let text = body
+        .candidates
+        .and_then(|c| c.into_iter().next())
+        .and_then(|c| c.content)
+        .and_then(|c| c.parts)
+        .and_then(|p| p.into_iter().next())
+        .and_then(|p| p.text)
+        .unwrap_or_default();
 
     Ok(text)
+
 }
