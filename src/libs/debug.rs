@@ -8,11 +8,12 @@ pub enum LogType {
     Failed,
     Debug,
     LLM,
+    Action,
 }
 
 // Tüm log tipleri
 fn all_tags() -> Vec<&'static str> {
-    vec!["SUCCESS", "FAILED!", "DEBUG", "LLM"]
+    vec!["SUCCESS", "FAILED!", "DEBUG", "LLM", "ACTION"]
 }
 
 // Ortala ve maksimum genişlik bul
@@ -36,6 +37,8 @@ pub fn printd(message: &str, log_type: LogType) {
         LogType::Failed => ("FAILED!", |s: &str| s.red()),
         LogType::Debug => ("DEBUG", |s: &str| s.bright_black()),
         LogType::LLM => ("LLM", |s: &str| s.cyan()),
+        LogType::Action => ("ACTION", |s: &str| s.yellow()),
+
     };
 
     // Maksimum tag uzunluğunu bul

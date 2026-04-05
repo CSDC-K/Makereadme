@@ -31,7 +31,7 @@ impl Build {
         }
     }
 
-    pub async fn build(&self) {
+    pub async fn build(&self) -> bool {
         printd!("Building process started!", Success);
         printd!("Reading configs...", Debug);
         printd!(format!("API TYPE : {}", self.API_TYPE).as_str(), Debug);
@@ -53,7 +53,21 @@ impl Build {
             }
         };
 
-        let api = api_lib(api_type_enum, self.LLM_MODEL.clone(), self.API_KEY.clone(), &self.PROJECT_DIR, self.OUTPUT_FILE.clone()).await;
+        match api_lib(
+            api_type_enum,
+            self.LLM_MODEL.clone(),
+            self.API_KEY.clone(),
+            &self.PROJECT_DIR,
+            self.OUTPUT_FILE.clone(),
+        )
+        .await
+        {
+            Ok(exit_received) => exit_received,
+            Err(e) => {
+                printd!(format!("Build failed in API layer: {}", e).as_str(), Failed);
+                false
+            }
+        }
 
     }
 

@@ -1,11 +1,12 @@
 use std::path::PathBuf;
-use std::time;
+use tokio::time::{sleep, Duration};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::libs::memory::{Responses};
 use crate::printd;
-use crate::libs::action_executer;
+use crate::libs::action_executer::{self, ActionResult};
 
 // ── Request Structs ──
 
@@ -61,20 +62,25 @@ pub async fn create_communication(
     api_key: String,
     system_prompt: String,
     model_type: String,
-    project_dir : &PathBuf
+    project_dir : &PathBuf,
+    output_file: &str,
 ) -> Result<String, String> {
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
         model_type
     );
 
+    let mut temporary_memory = crate::libs::memory::Memory::default();
+    let project_tree = action_executer::project_tree_snapshot(project_dir);
+    let tree_context = format!("PROJECT DIRECTORY TREE:\n{}", project_tree);
+
     let request_body = GeminiRequest {
         contents: vec![
             Content {
                 parts: vec![Part {
-                    text: system_prompt,
+                    text: system_prompt.clone(),
                 }],
-                role: Some("Model".to_string()),
+                role: Some("User".to_string()),
             },
             Content {
                 parts: vec![Part {
@@ -86,10 +92,41 @@ pub async fn create_communication(
                 parts: vec![Part {
                     text: "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING".to_string(),
                 }],
-                role: Some("Model".to_string()),
+                role: Some("User".to_string()),
+            },
+            Content {
+                parts: vec![Part {
+                    text: tree_context.clone(),
+                }],
+                role: Some("User".to_string()),
             },
         ],
     };
+
+    temporary_memory.append_to_history(
+        Responses{
+            response: system_prompt.clone(),
+            role: "User".to_string(),
+    });
+
+    temporary_memory.append_to_history(
+        Responses{
+            response: "Understood. I will follow the instructions above.".to_string(),
+            role: "Model".to_string(),
+    });
+
+    temporary_memory.append_to_history(
+        Responses{
+            response: "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+            role: "User".to_string(),
+    });
+
+    temporary_memory.append_to_history(
+        Responses{
+            response: tree_context,
+            role: "User".to_string(),
+    });
+
 
     printd!(
         format!("Sending request to Gemini API (model: {})", model_type).as_str(),
@@ -144,42 +181,37 @@ pub async fn create_communication(
 
     loop {
 
-        time::Duration::from_secs(3);
+        sleep(Duration::from_secs(3)).await;
 
-        let mut action_results = String::new();
+        let mut action_results : Vec<ActionResult> = Vec::new();
 
-        printd!(
-            format!("Gemini response received ({} chars)", text.len()).as_str(),
-            LLM
-        );
-
-        printd!(format!("Gemini Response Text: {}", text).as_str(), LLM);
-        printd!("Parsing actions from Gemini response...", Debug);
+        printd!("Parsing actions from Gemini response...", Action);
 
         let actions = action_executer::parse_actions(&text);
 
-        let actions_result = action_executer::execute_actions(actions, project_dir, "README.md");
+        let actions_result = action_executer::execute_actions(actions, project_dir, output_file);
         let mut i = 1;
+        let mut should_exit = false;
 
         for action_result in actions_result {
+            if matches!(action_result.action, action_executer::Action::Exit) {
+                should_exit = true;
+            }
             
             match action_result.success {
                 true => {
                     printd!(format!("Action {} : {:?}", i , action_result.action).as_str(), Success);
-                    printd!(format!("Action {}'s Content : {:?}", i , action_result.action).as_str(), Success);
 
-                    action_results.push_str(format!("Action {} executed successfully. Action: {:?}\n", i, action_result.content).as_str());
+                    action_results.push(action_result);
                     i += 1;
-
 
                 }
 
                 false => {
                     printd!("Found Broken Action Request!", Failed);
                     printd!(format!("Action {} : {:?}", i , action_result.action).as_str(), Failed);
-                    printd!(format!("Action {}'s Content : {:?}", i , action_result.action).as_str(), Failed);
 
-                    action_results.push_str(format!("Action {} execution failed. Action: {:?}\n", i, action_result.content).as_str());
+                    action_results.push(action_result);
                     i += 1;
 
                 }
@@ -187,7 +219,21 @@ pub async fn create_communication(
             }
         }
 
-        text = create_gemini_response(api_key.clone(), client.clone(), url.clone(), action_results).await?;
+        if should_exit {
+            printd!("EXIT action received. Stopping Gemini loop.", Success);
+            return Ok("Exited by model request".to_string());
+        }
+
+        text = create_gemini_response(api_key.clone(), client.clone(), url.clone(), action_results, &mut temporary_memory).await?;
+
+        temporary_memory.append_to_history(
+            Responses{
+                response: text.clone(),
+                role: "Model".to_string(),
+            }
+        );
+
+
 
     }
 
@@ -195,7 +241,12 @@ pub async fn create_communication(
 
 
 
-async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: String) -> Result<String, String> {
+async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: Vec<ActionResult>, temporary_memory: &mut crate::libs::memory::Memory) -> Result<String, String> {
+
+    for action_result in action_results {
+        temporary_memory.append_to_result(action_result);
+    }
+
 
     let response = client
     .post(&url)
@@ -203,13 +254,23 @@ async fn create_gemini_response(api_key: String, client: Client, url : String, a
     .header("Content-Type", "application/json")
     .json(&GeminiRequest {
         contents: vec![
+            // sending action results to the model for better context
             Content {
                 parts: vec![Part {
-                    text: action_results,
+                    text: temporary_memory.execute_result.iter().map(|r| format!("{}: {}", if r.success { "Success" } else { "Failed" }, r.content)).collect::<Vec<String>>().join("\n"),
                 }],
-                role: None,
+                role: Some("User".to_string()),
                 
             },
+
+            // sending temporary memory to the model for better context
+            Content {
+                parts: vec![Part {
+                    text : temporary_memory.response_history.iter().map(|r| format!("{}: {}", r.role, r.response)).collect::<Vec<String>>().join("\n"),
+                }],
+                role: Some("User".to_string()),
+            }
+            
         ],
     })
     .send()
