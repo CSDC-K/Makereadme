@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::printd;
-use crate::apis::api_lib::{self, api_lib};
+use crate::apis::api_lib::{api_lib};
+use crate::libs::errors::Error;
 
 pub enum ApiType {
     GEMINI,
@@ -31,7 +32,7 @@ impl Build {
         }
     }
 
-    pub async fn build(&self) -> bool {
+    pub async fn build(&self) -> Result<bool, Error> {
         printd!("Building process started!", Success);
         printd!("Reading configs...", Debug);
         printd!(format!("API TYPE : {}", self.API_TYPE).as_str(), Debug);
@@ -48,8 +49,8 @@ impl Build {
             "LOCAL" => ApiType::LOCAL,
             "NVIDIA" => ApiType::NVIDIA,
             _ => {
-                printd!("Invalid API Type! Defaulting to LOCAL", Failed);
-                ApiType::LOCAL
+                printd!("Invalid API Type!", Failed);
+                return Err(Error::UnknownApiTypeError(self.API_TYPE.clone()));
             }
         };
 
@@ -62,11 +63,8 @@ impl Build {
         )
         .await
         {
-            Ok(exit_received) => exit_received,
-            Err(e) => {
-                printd!(format!("Build failed in API layer: {}", e).as_str(), Failed);
-                false
-            }
+            Ok(exit_received) => Ok(exit_received),
+            Err(e) => Err(e)
         }
 
     }

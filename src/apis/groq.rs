@@ -1,9 +1,10 @@
-use groq_api_rs::completion::{client::Groq, message::Message, request::builder, response};
+use groq_api_rs::completion::{client::Groq, message::Message, request::builder};
 
 use crate::printd;
+use crate::libs::errors::Error;
 
 
-pub async fn create_communication(api_key: String, prompt: String, model_type: String) {
+pub async fn create_communication(api_key: String, prompt: String, model_type: String) -> Result<bool, Error> {
 
     let mut client = Groq::new(api_key.as_str());
     client.add_messages(vec![Message::SystemMessage {
@@ -36,8 +37,7 @@ pub async fn create_communication(api_key: String, prompt: String, model_type: S
                     // When i done with creating prompt file, i will implement this part for streaming responses
                 }
                 Err(e) => {
-                    printd!(format!("Error in Groq API communication: {}", e).as_str(), Failed);
-                    break;
+                    return Err(Error::RunError(format!("Groq API communication failed: {}", e)));
                 }
             }
 

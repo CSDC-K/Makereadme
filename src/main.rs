@@ -1,38 +1,54 @@
+// Main entry point for the MakeREADME application, responsible for initializing the application, handling user input, and orchestrating the overall flow of the program.
+// Version 0.1.0 - Initial implementation of the main application logic.
 pub mod libs {   
-    pub mod debug;
-    pub mod build;
-    pub mod action_executer;
-    pub mod memory;
+    pub mod debug;             // Debugging utilities for the application, providing functions to print debug information in a structured and colored format.
+    pub mod build;             // Build utilities for the application, providing functions to manage and execute build processes.
+    pub mod action_executer;   // Action execution utilities for the application, providing functions to execute various actions.
+    pub mod memory;            // Memory management utilities for the application, providing functions to manage memory allocation and deallocation.
+    pub mod errors;            // Error handling utilities for the application, providing functions to handle and report errors.
 }
 
 pub mod apis {
-    pub mod api_lib;
-    pub mod groq;
-    pub mod gemini;
-    pub mod llmapi;
-    pub mod nvidia;
+    pub mod api_lib;            // API library for the application, providing functions to integrate and communicate with various APIs.
+    pub mod groq;               // GROQ API integration module, providing functions to communicate with the GROQ API.
+    pub mod gemini;             // Gemini API integration module, providing functions to communicate with the Gemini API.
+    pub mod llmapi;             // LLM API integration module, providing functions to communicate with various LLM APIs.
+    pub mod nvidia;             // NVIDIA API integration module, providing functions to communicate with NVIDIA's APIs.
 }
 
-use std::{io::{Write, stdin, stdout}, vec};
-use std::env;
-use std::fs;
+use std::{io::{Write, stdin, stdout}, vec}; // Standard library imports for input/output operations and vector handling.
+use std::env;                               // Standard library import for environment variable handling.
+use std::fs;                                // Standard library import for file system operations.
 
-use libs::debug::*;           // DEBUG INFO
-use libs::build::Build;      // Build Struct
-use colored::*;         // Cli Conf
-use dotenv::dotenv;
-use inquire::Select;
+use libs::debug::*;             // DEBUG INFO
+use libs::build::Build;         // Build Struct
+use colored::*;                 // Colored Terminal Output
+use libs::errors::Error; // Error Handling
+use dotenv::dotenv;             // ENV
+use inquire::Select;            // Interactive CLI Selections
+
 
 
 #[tokio::main]
 async fn main() {
+
+    if let Err(e) = run().await {
+        printd!(format!("{e}").as_str(), Failed); // thiserror Display mesajını basar
+        std::process::exit(1);
+    }
+
+}
+
+async fn run() -> Result<(), Error> {
     let api_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
     let banner : String = r#"
 ▗▖  ▗▖ ▗▄▖ ▗▖ ▗▖▗▄▄▄▖▗▄▄▖ ▗▄▄▄▖ ▗▄▖ ▗▄▄▄  ▗▖  ▗▖▗▄▄▄▖
 ▐▛▚▞▜▌▐▌ ▐▌▐▌▗▞▘▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▌  █ ▐▛▚▞▜▌▐▌   
 ▐▌  ▐▌▐▛▀▜▌▐▛▚▖ ▐▛▀▀▘▐▛▀▚▖▐▛▀▀▘▐▛▀▜▌▐▌  █ ▐▌  ▐▌▐▛▀▀▘
 ▐▌  ▐▌▐▌ ▐▌▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▙▄▄▀ ▐▌  ▐▌▐▙▄▄▖
-                                   -- Made By Kuzey (CSDC-K)
+
+-- Generate README.md files with the power of LLMs! --
+-- Made By Kuzey (CSDC-K)
     "#.to_string();
 
     println!("{}", banner.bright_yellow());
@@ -74,9 +90,9 @@ async fn main() {
     let mut output_name : String = String::new();
 
     if load_env_file == "1" {
-        api_type = read_env_key("LLM_TYPE").unwrap_or_default();
-        model_type = read_env_key("LLM_MODEL").unwrap_or_default();
-        api_key = read_env_key("API_KEY").unwrap_or_default();
+        api_type = read_env_key("LLM_TYPE").ok_or(Error::EnvReadError("LLM_TYPE VARIABLE NOT FOUND".to_string()))?;
+        model_type = read_env_key("LLM_MODEL").ok_or(Error::EnvReadError("LLM_MODEL VARIABLE NOT FOUND".to_string()))?;
+        api_key = read_env_key("API_KEY").ok_or(Error::EnvReadError("API_KEY VARIABLE NOT FOUND".to_string()))?;
 
         if api_type.is_empty() || !api_types_vec.contains(&api_type.as_str()) {
             if !api_type.is_empty() {
@@ -153,9 +169,9 @@ async fn main() {
                 std::path::PathBuf::from(project_folder.trim()),
                 output_name.trim().to_string()
             );
-            let exit_received = build.build().await;
+            let exit_received = build.build().await?;
 
-            if exit_received && ask_yes_no("Model EXIT aksiyonu verdi. Ayarlari .env dosyasina kaydetmek ister misin? (Y/N) ") {
+            if exit_received && ask_yes_no("Build process quit by LLM, do you want to save the basic settings (LLM_TYPE, LLM_MODEL, API_KEY) to .env? (Y/N) ") {
                 match save_llm_settings_to_env(api_type.as_str(), api_key.trim(), model_type.trim()) {
                     Ok(_) => printd!("Settings saved to .env", Success),
                     Err(e) => printd!(format!("Failed to save .env: {}", e).as_str(), Failed),
@@ -206,7 +222,6 @@ async fn main() {
         }
 
     }
-
 }
 
 fn ask_yes_no(prompt: &str) -> bool {

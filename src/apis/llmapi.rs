@@ -8,6 +8,7 @@ use reqwest::{
 use serde_json::{Value, json};
 
 use crate::libs::action_executer::{self, ActionResult};
+use crate::libs::errors::Error;
 use crate::libs::memory::Responses;
 use crate::printd;
 
@@ -19,7 +20,7 @@ pub async fn create_communication(
     model_type: String,
     project_dir: &PathBuf,
     output_file: &str,
-) -> Result<String, String> {
+) -> Result<bool, Error> {
     let url = "https://api.llmapi.ai/v1/chat/completions".to_string();
     let normalized_api_key = api_key.trim().to_string();
     let normalized_model = model_type.trim().to_string();
@@ -119,7 +120,7 @@ pub async fn create_communication(
 
         if should_exit {
             printd!("EXIT action received. Stopping LLMAPI loop.", Success);
-            return Ok("Exited by model request".to_string());
+            return Ok(true);
         }
 
         text = create_llmapi_response(
@@ -146,7 +147,7 @@ async fn create_llmapi_response(
     model_type: String,
     action_results: Vec<ActionResult>,
     temporary_memory: &mut crate::libs::memory::Memory,
-) -> Result<String, String> {
+) -> Result<String, Error> {
     for action_result in action_results {
         temporary_memory.append_to_result(action_result);
     }
@@ -187,13 +188,13 @@ async fn send_llmapi_request(
     url: &str,
     api_key: &str,
     body: &Value,
-) -> Result<String, String> {
+) -> Result<String, Error> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {}", api_key.trim()))
-            .map_err(|e| format!("Invalid Authorization header: {}", e))?,
+            .map_err(|e| Error::WrongApiKey(format!("Invalid Authorization header: {}", e)))?,
     );
 
     let response = client
@@ -202,7 +203,7 @@ async fn send_llmapi_request(
         .json(body)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| Error::RunError(format!("LLMAPI request failed: {}", e)))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -210,25 +211,20 @@ async fn send_llmapi_request(
             .text()
             .await
             .unwrap_or_else(|_| "Could not read error body".to_string());
-        printd!(
-            format!("LLMAPI error ({}): {}", status, error_text).as_str(),
-            Failed
-        );
-        return Err(format!("HTTP {}: {}", status, error_text));
+        return Err(Error::RunError(format!("LLMAPI HTTP {}: {}", status, error_text)));
     }
 
     let body: Value = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+        .map_err(|e| Error::RunError(format!("LLMAPI parse error: {}", e)))?;
 
     if let Some(message) = body
         .get("error")
         .and_then(|e| e.get("message"))
         .and_then(|m| m.as_str())
     {
-        printd!(format!("LLMAPI returned error: {}", message).as_str(), Failed);
-        return Err(format!("LLMAPI error: {}", message));
+        return Err(Error::RunError(format!("LLMAPI error: {}", message)));
     }
 
     let text = body

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::libs::memory::{Responses};
 use crate::printd;
 use crate::libs::action_executer::{self, ActionResult};
+use crate::libs::errors::Error;
 
 // ── Request Structs ──
 
@@ -64,7 +65,7 @@ pub async fn create_communication(
     model_type: String,
     project_dir : &PathBuf,
     output_file: &str,
-) -> Result<String, String> {
+) -> Result<bool, Error> {
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
         model_type
@@ -141,7 +142,7 @@ pub async fn create_communication(
         .json(&request_body)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| Error::RunError(format!("Gemini request failed: {}", e)))?;
 
     let status = response.status();
 
@@ -150,24 +151,16 @@ pub async fn create_communication(
             .text()
             .await
             .unwrap_or_else(|_| "Could not read error body".to_string());
-        printd!(
-            format!("Gemini API error ({}): {}", status, error_text).as_str(),
-            Failed
-        );
-        return Err(format!("HTTP {}: {}", status, error_text));
+        return Err(Error::RunError(format!("Gemini HTTP {}: {}", status, error_text)));
     }
 
     let body: GeminiResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+        .map_err(|e| Error::RunError(format!("Gemini parse error: {}", e)))?;
 
     if let Some(err) = body.error {
-        printd!(
-            format!("Gemini API returned error: {}", err.message).as_str(),
-            Failed
-        );
-        return Err(format!("Gemini error: {}", err.message));
+        return Err(Error::RunError(format!("Gemini error: {}", err.message)));
     }
 
     let mut text = body
@@ -221,7 +214,7 @@ pub async fn create_communication(
 
         if should_exit {
             printd!("EXIT action received. Stopping Gemini loop.", Success);
-            return Ok("Exited by model request".to_string());
+            return Ok(true);
         }
 
         text = create_gemini_response(api_key.clone(), client.clone(), url.clone(), action_results, &mut temporary_memory).await?;
@@ -241,7 +234,7 @@ pub async fn create_communication(
 
 
 
-async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: Vec<ActionResult>, temporary_memory: &mut crate::libs::memory::Memory) -> Result<String, String> {
+async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: Vec<ActionResult>, temporary_memory: &mut crate::libs::memory::Memory) -> Result<String, Error> {
 
     for action_result in action_results {
         temporary_memory.append_to_result(action_result);
@@ -275,33 +268,25 @@ async fn create_gemini_response(api_key: String, client: Client, url : String, a
     })
     .send()
     .await
-    .map_err(|e| format!("Request failed: {}", e))?;
+    .map_err(|e| Error::RunError(format!("Gemini follow-up request failed: {}", e)))?;
 
     let status = response.status();
 
-    if (!status.is_success()) {
+    if !status.is_success() {
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "Could not read error body".to_string());
-        printd!(
-            format!("Gemini API error ({}): {}", status, error_text).as_str(),
-            Failed
-        );
-        return Err(format!("HTTP {}: {}", status, error_text));
+        return Err(Error::RunError(format!("Gemini HTTP {}: {}", status, error_text)));
     }
 
     let body = response
         .json::<GeminiResponse>()
         .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+        .map_err(|e| Error::RunError(format!("Gemini parse error: {}", e)))?;
 
     if let Some(err) = body.error {
-        printd!(
-            format!("Gemini API returned error: {}", err.message).as_str(),
-            Failed
-        );
-        return Err(format!("Gemini error: {}", err.message));
+        return Err(Error::RunError(format!("Gemini error: {}", err.message)));
     }
 
     let text = body
