@@ -91,7 +91,7 @@ pub async fn create_communication(
             },
             Content {
                 parts: vec![Part {
-                    text: "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+                    text: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
                 }],
                 role: Some("User".to_string()),
             },
@@ -118,7 +118,7 @@ pub async fn create_communication(
 
     temporary_memory.append_to_history(
         Responses{
-            response: "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+            response: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
             role: "User".to_string(),
     });
 

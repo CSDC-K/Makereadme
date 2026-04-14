@@ -42,7 +42,7 @@ pub async fn create_communication(
             },
             {
                 "role": "user",
-                "content": "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING"
+                "content": "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING"
             },
             {
                 "role": "user",
@@ -62,7 +62,7 @@ pub async fn create_communication(
     });
 
     temporary_memory.append_to_history(Responses {
-        response: "READMEMAKER AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+        response: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
         role: "User".to_string(),
     });
 

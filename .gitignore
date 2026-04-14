@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 prompts
 wget-log
 .env
