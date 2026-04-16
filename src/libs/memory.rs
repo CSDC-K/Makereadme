@@ -1,16 +1,15 @@
 
 use crate::libs::action_executer::{ActionResult};
-use tokio::*;
 use chrono::Local;
 
 
-pub struct Responses{
-    pub response : String,
+pub struct HistoryEntry{
+    pub content : String,
     pub role : String
 }
 
 pub struct Memory{
-    pub response_history : Vec<Responses>,
+    pub history : Vec<HistoryEntry>,
     pub execute_result : Vec<ActionResult>
 }
 
@@ -19,9 +18,9 @@ impl Memory {
     pub fn default() -> Self {
         let time = Local::now().format("%H:%M:%S").to_string();
         Memory {
-            response_history: vec![
-                Responses {
-                    response : format!("MEMORY STARTED AT : {}", time), 
+            history: vec![
+                HistoryEntry {
+                    content : format!("MEMORY STARTED AT : {}", time), 
                     role : "User".to_string()
                 }
             ],
@@ -35,8 +34,8 @@ impl Memory {
         }
     }
 
-    pub fn append_to_history(&mut self, response : Responses) {
-        self.response_history.push(response);
+    pub fn append_to_history(&mut self, entry : HistoryEntry) {
+        self.history.push(entry);
     }
 
     pub fn append_to_result(&mut self, action_result : ActionResult) {

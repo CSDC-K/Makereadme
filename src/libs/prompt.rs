@@ -56,6 +56,15 @@ Rules:
 - Never roleplay tool execution. Only request actions through valid tags.
 - If you cannot proceed, output a `<THINK>` plus a valid `<READ>` request to gather missing context.
 
+### Valid Output Example (STRICT)
+
+The following is a valid response shape:
+
+<THINK>I need to inspect project metadata first.</THINK>
+<READ>Cargo.toml</READ>
+
+Never output plain Markdown prose like a final README unless you are inside `<WRITE>...</WRITE>`.
+
 ## 3) Required Workflow
 
 Follow this order before substantial writing:

@@ -151,6 +151,11 @@ async fn run() -> Result<(), Error> {
                 // asking api gateway url and port for local execution
 
                 let mut url = String::new();
+                let mut model_temperature = String::new();
+                let mut model_top_k = String::new();
+                let mut model_top_p = String::new();
+
+
                 print!("~Ollama API URL (default http://127.0.0.1:11434): ");
                 stdout().flush().unwrap();
                 stdin().read_line(&mut url).expect("ERROR AT OLLAMA_URL_INPUT");
@@ -159,6 +164,20 @@ async fn run() -> Result<(), Error> {
                 } else {
                     url.trim()
                 };
+
+                print!("~Model Temperature (default 0.7): ");
+                stdout().flush().unwrap();
+                stdin().read_line(&mut model_temperature).expect("ERROR AT MODEL_TEMPERATURE_INPUT");
+                
+
+
+                print!("~Model Top K (default 20): ");
+                stdout().flush().unwrap();
+                stdin().read_line(&mut model_top_k).expect("ERROR AT MODEL_TOP_K_INPUT");
+
+                print!("~Model Top P (default 0.95): ");
+                stdout().flush().unwrap();
+                stdin().read_line(&mut model_top_p).expect("ERROR AT MODEL_TOP_P_INPUT");
 
 
                 match get_ollama_models(url) {
@@ -204,7 +223,18 @@ async fn run() -> Result<(), Error> {
                             };
 
                             if what_user_wants_to_change == "" {
-                                let build = build::LocalBuild::new(model_type.clone(), std::path::PathBuf::from(project_folder.trim()), output_name.trim().to_string());
+                                let temperature = model_temperature.trim().parse::<f32>().unwrap_or(0.7);
+                                let top_k = model_top_k.trim().parse::<i32>().unwrap_or(20);
+                                let top_p = model_top_p.trim().parse::<f32>().unwrap_or(0.95);
+                                let build = build::LocalBuild::new(
+                                    url.to_string(),
+                                    model_type.clone(),
+                                    std::path::PathBuf::from(project_folder.trim()),
+                                    output_name.trim().to_string(),
+                                    temperature,
+                                    top_k,
+                                    top_p,
+                                );
                                 build.build().await?;
 
                                 continue;
@@ -380,12 +410,25 @@ fn read_env_key(key: &str) -> Option<String> {
 
 
 fn get_ollama_models(url : &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let resp = reqwest::blocking::get(url)?;
-    if !resp.status().is_success() {
-        return Err(format!("Ollama API error: {}", resp.status()).into());
+    let normalized = url.trim().trim_end_matches('/');
+    let endpoint = if normalized.ends_with("/api/tags") {
+        normalized.to_string()
+    } else if normalized.ends_with("/v1") {
+        format!("{}/api/tags", normalized.trim_end_matches("/v1"))
+    } else {
+        format!("{}/api/tags", normalized)
+    };
+
+    let resp = reqwest::blocking::get(endpoint.clone())?;
+    let status = resp.status();
+    let raw = resp.text()?;
+
+    if !status.is_success() {
+        return Err(format!("Ollama API error at {}: {}", endpoint, status).into());
     }
 
-    let data: TagsResponse = resp.json()?;
+    let data: TagsResponse = serde_json::from_str(&raw)
+        .map_err(|e| format!("Ollama tags decode error at {}: {} | body: {}", endpoint, e, raw))?;
     Ok(data.models.into_iter().map(|m| m.name).collect())
 }
 

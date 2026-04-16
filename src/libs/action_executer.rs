@@ -33,7 +33,8 @@ pub struct ActionResult {
 pub fn parse_actions(response: &str) -> Vec<Action> {
     let mut all_actions: Vec<Action> = Vec::new();
 
-    let mut remaining = response;
+    let normalized = normalize_response_for_action_parse(response);
+    let mut remaining = normalized.as_str();
 
     while let Some(action) = extract_next_action(remaining) {
         match &action {
@@ -91,10 +92,10 @@ pub fn parse_actions(response: &str) -> Vec<Action> {
 }
 
 fn extract_next_action(input: &str) -> Option<(Action, &str)> {
-    let read_start = input.find("<READ>");
-    let write_start = input.find("<WRITE>");
-    let think_start = input.find("<THINK>");
-    let exit_start = input.find("<EXIT>");
+    let read_start = find_tag_ci(input, "<READ>");
+    let write_start = find_tag_ci(input, "<WRITE>");
+    let think_start = find_tag_ci(input, "<THINK>");
+    let exit_start = find_tag_ci(input, "<EXIT>");
 
     // Find the earliest action tag
     let candidates: Vec<(usize, u8)> = [
@@ -123,7 +124,7 @@ fn extract_exit(input: &str, start: usize) -> Option<(Action, &str)> {
     let close_tag = "</EXIT>";
 
     let content_start = start + open_tag.len();
-    let rest = if input[content_start..].starts_with(close_tag) {
+    let rest = if starts_with_ci(&input[content_start..], close_tag) {
         &input[content_start + close_tag.len()..]
     } else {
         &input[content_start..]
@@ -139,7 +140,7 @@ fn extract_think(input: &str, start: usize) -> Option<(Action, &str)> {
     let close_tag = "</THINK>";
 
     let content_start = start + open_tag.len();
-    let close_pos = input[content_start..].find(close_tag)?;
+    let close_pos = find_tag_ci(&input[content_start..], close_tag)?;
     let content = &input[content_start..content_start + close_pos];
     let rest = &input[content_start + close_pos + close_tag.len()..];
 
@@ -159,7 +160,7 @@ fn extract_read(input: &str, start: usize) -> Option<(Action, &str)> {
     let close_tag = "</READ>";
 
     let content_start = start + open_tag.len();
-    let close_pos = input[content_start..].find(close_tag)?;
+    let close_pos = find_tag_ci(&input[content_start..], close_tag)?;
     let content = input[content_start..content_start + close_pos].trim();
     let rest = &input[content_start + close_pos + close_tag.len()..];
 
@@ -173,7 +174,7 @@ fn extract_write(input: &str, start: usize) -> Option<(Action, &str)> {
     let close_tag = "</WRITE>";
 
     let content_start = start + open_tag.len();
-    let close_pos = input[content_start..].find(close_tag)?;
+    let close_pos = find_tag_ci(&input[content_start..], close_tag)?;
     let content = &input[content_start..content_start + close_pos];
     let rest = &input[content_start + close_pos + close_tag.len()..];
 
@@ -187,6 +188,21 @@ fn extract_write(input: &str, start: usize) -> Option<(Action, &str)> {
     );
 
     Some((Action::Write(trimmed.to_string()), rest))
+}
+
+fn normalize_response_for_action_parse(response: &str) -> String {
+    // Models sometimes wrap action tags in fenced blocks; strip fences for tolerant parsing.
+    response.replace("```", "")
+}
+
+fn find_tag_ci(input: &str, tag: &str) -> Option<usize> {
+    input.to_ascii_lowercase().find(&tag.to_ascii_lowercase())
+}
+
+fn starts_with_ci(input: &str, prefix: &str) -> bool {
+    input
+        .get(0..prefix.len())
+        .is_some_and(|s| s.eq_ignore_ascii_case(prefix))
 }
 
 // ── Executor ──

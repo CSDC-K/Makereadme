@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::libs::action_executer::{self, ActionResult};
 use crate::libs::errors::Error;
-use crate::libs::memory::Responses;
+use crate::libs::memory::HistoryEntry;
 use crate::printd;
 
 pub async fn create_communication(
@@ -49,23 +49,23 @@ pub async fn create_communication(
         ]
     });
 
-    temporary_memory.append_to_history(Responses {
-        response: system_prompt,
+    temporary_memory.append_to_history(HistoryEntry {
+        content: system_prompt,
         role: "User".to_string(),
     });
 
-    temporary_memory.append_to_history(Responses {
-        response: "Understood. I will follow the instructions above.".to_string(),
+    temporary_memory.append_to_history(HistoryEntry {
+        content: "Understood. I will follow the instructions above.".to_string(),
         role: "Model".to_string(),
     });
 
-    temporary_memory.append_to_history(Responses {
-        response: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+    temporary_memory.append_to_history(HistoryEntry {
+        content: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
         role: "User".to_string(),
     });
 
-    temporary_memory.append_to_history(Responses {
-        response: tree_context,
+    temporary_memory.append_to_history(HistoryEntry {
+        content: tree_context,
         role: "User".to_string(),
     });
 
@@ -125,8 +125,8 @@ pub async fn create_communication(
         )
         .await?;
 
-        temporary_memory.append_to_history(Responses {
-            response: text.clone(),
+        temporary_memory.append_to_history(HistoryEntry {
+            content: text.clone(),
             role: "Model".to_string(),
         });
     }
@@ -163,9 +163,9 @@ async fn create_groq_response(
             {
                 "role": "user",
                 "content": temporary_memory
-                    .response_history
+                    .history
                     .iter()
-                    .map(|r| format!("{}: {}", r.role, r.response))
+                    .map(|r| format!("{}: {}", r.role, r.content))
                     .collect::<Vec<String>>()
                     .join("\n")
             }

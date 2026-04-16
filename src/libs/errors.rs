@@ -32,6 +32,10 @@ API_KEY=your_api_key_here
     #[error("Rate limit exceeded (Token&Rpd-Rpm): {0}")]
     RateLimitExceededError(String),
 
+
+    #[error("Failed to create response from local model : {0}")]
+    LocalModelInferenceError(String),
+
     #[error("Failed to read file : {0}")]
     FileReadError(String),
     #[error("Failed to write file : {0}")]

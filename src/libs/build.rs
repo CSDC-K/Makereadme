@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::printd;
 use crate::apis::api_lib::{api_lib};
+use crate::local::local;
 use crate::libs::errors::Error;
 
 fn mask_secret(value: &str) -> String {
@@ -38,29 +39,41 @@ pub struct Build {
 }
 
 pub struct LocalBuild {
-    LLM_MODEL : String,
-    PROJECT_DIR : PathBuf,
-    OUTPUT_FILE : String
+    pub ollama_gateway_url : String,
+    pub llm_model : String,
+    pub project_dir : PathBuf,
+    pub output_file : String,
+    pub temperature : f32,
+    pub top_k : i32,
+    pub top_p : f32
 }
 
 impl LocalBuild {
-    pub fn new(llm_model : String, project_dir : PathBuf, output_file : String) -> Self {
+    pub fn new(ollama_gateway_url : String, llm_model : String, project_dir : PathBuf, output_file : String, temperature : f32, top_k : i32, top_p : f32) -> Self {
         LocalBuild {
-            LLM_MODEL : llm_model,
-            PROJECT_DIR : project_dir,
-            OUTPUT_FILE : output_file
+            ollama_gateway_url : ollama_gateway_url,
+            llm_model : llm_model,
+            project_dir : project_dir,
+            output_file : output_file,
+            temperature : temperature,
+            top_k : top_k,
+            top_p : top_p
         }
     }
 
     pub async fn build(&self) -> Result<bool, Error> {
         printd!("Building process started!", Success);
         printd!("Reading configs...", Debug);
-        printd!(format!("MODEL TYPE : {}", self.LLM_MODEL).as_str(), Debug);
-        printd!(format!("PROJECT DIR : {}", self.PROJECT_DIR.to_str().unwrap()).as_str(), Debug);
-        printd!(format!("OUTPUT FILE : {}", self.OUTPUT_FILE).as_str(), Debug);
+        printd!(format!("OLLAMA GATEWAY URL : {}", self.ollama_gateway_url).as_str(), Debug);
+        printd!(format!("MODEL TYPE : {}", self.llm_model).as_str(), Debug);
+        printd!(format!("PROJECT DIR : {}", self.project_dir.to_str().unwrap()).as_str(), Debug);
+        printd!(format!("OUTPUT FILE : {}", self.output_file).as_str(), Debug);
+        printd!(format!("TEMPERATURE : {}", self.temperature).as_str(), Debug);
+        printd!(format!("TOP K : {}", self.top_k).as_str(), Debug);
+        printd!(format!("TOP P : {}", self.top_p).as_str(), Debug);
         printd!("Starting Ai Service...", Debug);
 
-        // CreateCommunicationLocal(self.LLM_MODEL.clone(), self.PROJECT_DIR.clone()).await;
+        local::create_communication_local(self).await?;
 
         Ok(true)
     }

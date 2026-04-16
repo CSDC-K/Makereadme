@@ -4,7 +4,7 @@ use tokio::time::{sleep, Duration};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::libs::memory::{Responses};
+use crate::libs::memory::HistoryEntry;
 use crate::printd;
 use crate::libs::action_executer::{self, ActionResult};
 use crate::libs::errors::Error;
@@ -105,26 +105,26 @@ pub async fn create_communication(
     };
 
     temporary_memory.append_to_history(
-        Responses{
-            response: system_prompt.clone(),
+        HistoryEntry{
+            content: system_prompt.clone(),
             role: "User".to_string(),
     });
 
     temporary_memory.append_to_history(
-        Responses{
-            response: "Understood. I will follow the instructions above.".to_string(),
+        HistoryEntry{
+            content: "Understood. I will follow the instructions above.".to_string(),
             role: "Model".to_string(),
     });
 
     temporary_memory.append_to_history(
-        Responses{
-            response: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
+        HistoryEntry{
+            content: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
             role: "User".to_string(),
     });
 
     temporary_memory.append_to_history(
-        Responses{
-            response: tree_context,
+        HistoryEntry{
+            content: tree_context,
             role: "User".to_string(),
     });
 
@@ -220,8 +220,8 @@ pub async fn create_communication(
         text = create_gemini_response(api_key.clone(), client.clone(), url.clone(), action_results, &mut temporary_memory).await?;
 
         temporary_memory.append_to_history(
-            Responses{
-                response: text.clone(),
+            HistoryEntry{
+                content: text.clone(),
                 role: "Model".to_string(),
             }
         );
@@ -259,7 +259,7 @@ async fn create_gemini_response(api_key: String, client: Client, url : String, a
             // sending temporary memory to the model for better context
             Content {
                 parts: vec![Part {
-                    text : temporary_memory.response_history.iter().map(|r| format!("{}: {}", r.role, r.response)).collect::<Vec<String>>().join("\n"),
+                    text : temporary_memory.history.iter().map(|r| format!("{}: {}", r.role, r.content)).collect::<Vec<String>>().join("\n"),
                 }],
                 role: Some("User".to_string()),
             }
