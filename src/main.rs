@@ -1,6 +1,6 @@
 // Main entry point for the MakeREADME application, responsible for initializing the application, handling user input, and orchestrating the overall flow of the program.
 // Version 0.1.0 - Initial implementation of the main application logic.
-pub mod libs {   
+pub mod libs {
     pub mod debug;             // Debugging utilities for the application, providing functions to print debug information in a structured and colored format.
     pub mod build;             // Build utilities for the application, providing functions to manage and execute build processes.
     pub mod action_executer;   // Action execution utilities for the application, providing functions to execute various actions.
@@ -19,100 +19,80 @@ pub mod apis {
 
 pub mod local {
     pub mod local;              // Local execution module, providing functions to execute processes locally without API integration.
-    pub mod ollama;             // Ollama integration module, providing functions to communicate with the Ollama API for local model execution.
+    pub mod llama_cpp2;         // llama.cpp local backend integration.
 }
 
-use std::{io::{Write, stdin, stdout}, vec}; // Standard library imports for input/output operations and vector handling.
-use std::env;                               // Standard library import for environment variable handling.
-use std::fs;                                // Standard library import for file system operations.
+use std::env;
+use std::fs;
+use std::io::{Write, stdin, stdout};
+use std::path::Path;
 
-use libs::debug::*;             // DEBUG INFO
-use libs::build::*    ;         // Build Struct
 use colored::*;                 // Colored Terminal Output
-use libs::errors::Error;        // Error Handling
 use dotenv::dotenv;             // ENV
 use inquire::Select;            // Interactive CLI Selections
-use serde::{Deserialize};
+use libs::build::*;             // Build Struct
+use libs::debug::*;             // DEBUG INFO
+use libs::errors::Error;        // Error Handling
 
-use crate::libs::build;       // Serialization/Deserialization for data handling
-
-
-#[derive(Debug, Deserialize)]
-struct TagsResponse {
-    models: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelInfo {
-    name: String,
-}
-
-
+use crate::libs::build;
+use crate::local::llama_cpp2;
 
 #[tokio::main]
 async fn main() {
-
     if let Err(e) = run().await {
-        printd!(format!("{e}").as_str(), Failed); // thiserror Display mesajını basar
+        printd!(format!("{e}").as_str(), Failed);
         std::process::exit(1);
     }
-
 }
 
 async fn run() -> Result<(), Error> {
     let api_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
-    let banner : String = r#"
+    let banner: String = r#"
 ▗▖  ▗▖ ▗▄▖ ▗▖ ▗▖▗▄▄▄▖▗▄▄▖ ▗▄▄▄▖ ▗▄▖ ▗▄▄▄  ▗▖  ▗▖▗▄▄▄▖
-▐▛▚▞▜▌▐▌ ▐▌▐▌▗▞▘▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▌  █ ▐▛▚▞▜▌▐▌   
+▐▛▚▞▜▌▐▌ ▐▌▐▌▗▞▘▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▌  █ ▐▛▚▞▜▌▐▌
 ▐▌  ▐▌▐▛▀▜▌▐▛▚▖ ▐▛▀▀▘▐▛▀▚▖▐▛▀▀▘▐▛▀▜▌▐▌  █ ▐▌  ▐▌▐▛▀▀▘
 ▐▌  ▐▌▐▌ ▐▌▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▙▄▄▀ ▐▌  ▐▌▐▙▄▄▖
 
 -- Generate README.md files with the power of LLMs! --
 -- Made By Kuzey (CSDC-K)
-    "#.to_string();
+    "#
+    .to_string();
 
     println!("{}", banner.bright_yellow());
-
     println!("Welcome to MakeREADME V 0.0.1");
-    
 
     let mut load_env = String::new();
     print!("Do you want to load .env file? (Y/N) ");
     stdout().flush().unwrap();
-    stdin().read_line(&mut load_env).expect("ERROR AT LOAD_ENV_INPUT");
+    stdin()
+        .read_line(&mut load_env)
+        .expect("ERROR AT LOAD_ENV_INPUT");
 
-
-    let load_env_yn = load_env.trim().chars().next();
-
-    let load_env_file = match load_env_yn {
+    let load_env_file = match load_env.trim().chars().next() {
         Some('N') | Some('n') => {
-            printd!("Starting without .env file. You will be asked to input all the values.", Debug);
-            "0"
-        },
-        Some('Y') | Some('y') => { "1" }
-
+            printd!(
+                "Starting without .env file. You will be asked to input all the values.",
+                Debug
+            );
+            false
+        }
+        Some('Y') | Some('y') => {
+            dotenv().ok();
+            printd!("Loaded .env file successfully!", Success);
+            true
+        }
         _ => {
             printd!("Unkown input! Starting with defaults.", Failed);
-            ""
-        } ,
+            false
+        }
     };
-
-
-    if load_env_file == "1" {
-        dotenv().ok();
-        printd!("Loaded .env file successfully!", Success);
-    }
 
     let mut api_type: String;
     let mut model_type: String;
-    let mut api_key : String;
-    let mut project_folder : String = String::new();
-    let mut output_name : String = String::new();
+    let mut api_key: String;
 
-    if load_env_file == "1" {
-        api_type = read_env_key("LLM_TYPE").ok_or(Error::EnvReadError("LLM_TYPE VARIABLE NOT FOUND".to_string()))?;
-        model_type = read_env_key("LLM_MODEL").ok_or(Error::EnvReadError("LLM_MODEL VARIABLE NOT FOUND".to_string()))?;
-        api_key = read_env_key("API_KEY").ok_or(Error::EnvReadError("API_KEY VARIABLE NOT FOUND".to_string()))?;
+    if load_env_file {
+        api_type = read_env_key("LLM_TYPE").unwrap_or_default();
 
         if api_type.is_empty() || !api_types_vec.contains(&api_type.as_str()) {
             if !api_type.is_empty() {
@@ -126,6 +106,15 @@ async fn run() -> Result<(), Error> {
                 .unwrap()
                 .to_string();
         }
+
+        if api_type == "LOCAL" {
+            let model_from_env = read_env_key("LLM_MODEL");
+            run_local_mode(model_from_env).await?;
+            return Ok(());
+        }
+
+        model_type = read_env_key("LLM_MODEL").unwrap_or_default();
+        api_key = read_env_key("API_KEY").unwrap_or_default();
 
         if model_type.is_empty() {
             printd!("LLM_MODEL was not found in .env, asking interactively.", Debug);
@@ -145,192 +134,61 @@ async fn run() -> Result<(), Error> {
             .to_string();
 
         if api_type == "LOCAL" {
-            let ollama_yn = ask_yes_no("Is ollama installed? (Y/N) ");
-
-            if ollama_yn {
-                // asking api gateway url and port for local execution
-
-                let mut url = String::new();
-                let mut model_temperature = String::new();
-                let mut model_top_k = String::new();
-                let mut model_top_p = String::new();
-
-
-                print!("~Ollama API URL (default http://127.0.0.1:11434): ");
-                stdout().flush().unwrap();
-                stdin().read_line(&mut url).expect("ERROR AT OLLAMA_URL_INPUT");
-                let url = if url.trim().is_empty() {
-                    "http://127.0.0.1:11434"
-                } else {
-                    url.trim()
-                };
-
-                print!("~Model Temperature (default 0.7): ");
-                stdout().flush().unwrap();
-                stdin().read_line(&mut model_temperature).expect("ERROR AT MODEL_TEMPERATURE_INPUT");
-                
-
-
-                print!("~Model Top K (default 20): ");
-                stdout().flush().unwrap();
-                stdin().read_line(&mut model_top_k).expect("ERROR AT MODEL_TOP_K_INPUT");
-
-                print!("~Model Top P (default 0.95): ");
-                stdout().flush().unwrap();
-                stdin().read_line(&mut model_top_p).expect("ERROR AT MODEL_TOP_P_INPUT");
-
-
-                match get_ollama_models(url) {
-                    Ok(models) => {
-                        if models.is_empty() {
-                            printd!("No models found in Ollama. Please add models to Ollama and try again.", Failed);
-                            std::process::exit(1);
-                        }
-                        model_type = Select::new("Select Model:", models).prompt().unwrap();
-                        api_key = "NONE".to_string();
-
-                        print!("~Project Folder: ");
-                        stdout().flush().unwrap();
-                        stdin().read_line(&mut project_folder).expect("ERROR AT PROJECT_FOLDER_INPUT");
-
-                        print!("~Output File Name: ");
-                        stdout().flush().unwrap();
-                        stdin().read_line(&mut output_name).expect("ERROR AT OUTPUT_INPUT");
-
-                        loop {
-                            printd!("Reading configs...", Debug);
-                            printd!(format!("LLM API : {}", api_type.as_str()).as_str(), Debug);
-                            printd!(format!("MODEL TYPE : {}", model_type).as_str(), Debug);
-                            printd!(format!("PROJECT DIR : {}", project_folder.trim()).as_str(), Debug);
-                            printd!(format!("OUTPUT FILE : {}", output_name.trim()).as_str(), Debug);
-                            print!("Is that build true? (Y/N) ");
-                            stdout().flush().unwrap();
-                            let mut y_n = String::new();
-                            stdin().read_line(&mut y_n).expect("ERROR AT BUILD_Y_N_INPUT");
-
-                            let y_n_input = y_n.trim().chars().next();
-
-                            let what_user_wants_to_change = match y_n_input {
-                                Some('N') | Some('n') => {
-                                    Select::new("Which input you wanting to change?", vec!["MODEL TYPE", "PROJECT FOLDER", "OUTPUT NAME"]).prompt().unwrap().to_string()
-                                },
-                                Some('Y') | Some('y') => { "".to_string() }
-
-                                _ => {
-                                    printd!("Unkown input! Please answer correctly.", Failed);
-                                    continue
-                                } ,
-                            };
-
-                            if what_user_wants_to_change == "" {
-                                let temperature = model_temperature.trim().parse::<f32>().unwrap_or(0.7);
-                                let top_k = model_top_k.trim().parse::<i32>().unwrap_or(20);
-                                let top_p = model_top_p.trim().parse::<f32>().unwrap_or(0.95);
-                                let build = build::LocalBuild::new(
-                                    url.to_string(),
-                                    model_type.clone(),
-                                    std::path::PathBuf::from(project_folder.trim()),
-                                    output_name.trim().to_string(),
-                                    temperature,
-                                    top_k,
-                                    top_p,
-                                );
-                                build.build().await?;
-
-                                continue;
-                            }
-
-                            match what_user_wants_to_change.as_str() {
-                                "MODEL TYPE" => {
-                                    let models = get_ollama_models(&url).unwrap_or_else(|e| {
-                                        printd!(format!("Failed to fetch models from Ollama: {}", e).as_str(), Failed);
-                                        std::process::exit(1);
-                                    });
-                                    model_type = Select::new("Select Model:", models).prompt().unwrap();
-                                }
-                                "PROJECT FOLDER" => {
-                                    print!("~Project Folder: ");
-                                    stdout().flush().unwrap();
-                                    project_folder.clear();
-                                    stdin()
-                                        .read_line(&mut project_folder)
-                                        .expect("ERROR AT PROJECT_FOLDER_INPUT");
-                                }
-                                "OUTPUT NAME" => {
-                                    print!("~Output File Name: ");
-                                    stdout().flush().unwrap();
-                                    output_name.clear();
-                                    stdin()
-                                        .read_line(&mut output_name)
-                                        .expect("ERROR AT OUTPUT_INPUT");
-                                }
-                                _ => {
-                                    printd!("Unknown selection. Keeping current values.", Failed);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        printd!(format!("Failed to fetch models from Ollama: {}", e).as_str(), Failed);
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                printd!("Ollama is required for LOCAL mode.", Failed);
-                std::process::exit(1);
-            }
-
-        } else {
-            model_type = match_model_type(api_type.as_str());
-            api_key = read_line_input("~Api Key: ", "ERROR AT API_KEY_INPUT");
+            run_local_mode(None).await?;
+            return Ok(());
         }
+
+        model_type = match_model_type(api_type.as_str());
+        api_key = read_line_input("~Api Key: ", "ERROR AT API_KEY_INPUT");
     }
 
-    print!("~Project Folder: ");
-    stdout().flush().unwrap();
-    stdin().read_line(&mut project_folder).expect("ERROR AT PROJECT_FOLDER_INPUT");
-
-    print!("~Output File Name: ");
-    stdout().flush().unwrap();
-    stdin().read_line(&mut output_name).expect("ERROR AT OUTPUT_INPUT");
+    let mut project_folder = read_line_input("~Project Folder: ", "ERROR AT PROJECT_FOLDER_INPUT");
+    let mut output_name = read_line_input("~Output File Name: ", "ERROR AT OUTPUT_INPUT");
 
     loop {
         printd!("Reading configs...", Debug);
         printd!(format!("LLM API : {}", api_type.as_str()).as_str(), Debug);
-        printd!(format!("MODEL TYPE : {}", model_type).as_str(), Debug);
+        printd!(format!("MODEL TYPE : {}", model_type.as_str()).as_str(), Debug);
         printd!(format!("API KEY : {}", mask_secret(api_key.trim())).as_str(), Debug);
         printd!(format!("PROJECT DIR : {}", project_folder.trim()).as_str(), Debug);
         printd!(format!("OUTPUT FILE : {}", output_name.trim()).as_str(), Debug);
         print!("Is that build true? (Y/N) ");
         stdout().flush().unwrap();
+
         let mut y_n = String::new();
-        stdin().read_line(&mut y_n).expect("ERROR AT BUILD_Y_N_INPUT");
+        stdin()
+            .read_line(&mut y_n)
+            .expect("ERROR AT BUILD_Y_N_INPUT");
 
-        let y_n_input = y_n.trim().chars().next();
-
-        let what_user_wants_to_change = match y_n_input {
-            Some('N') | Some('n') => {
-                Select::new("Which input you wanting to change?", vec!["API TYPE", "MODEL TYPE", "API KEY", "PROJECT FOLDER", "OUTPUT NAME"]).prompt().unwrap()
-            },
-            Some('Y') | Some('y') => { "" }
-
+        let what_user_wants_to_change = match y_n.trim().chars().next() {
+            Some('N') | Some('n') => Select::new(
+                "Which input you wanting to change?",
+                vec!["API TYPE", "MODEL TYPE", "API KEY", "PROJECT FOLDER", "OUTPUT NAME"],
+            )
+            .prompt()
+            .unwrap(),
+            Some('Y') | Some('y') => "",
             _ => {
                 printd!("Unkown input! Please answer correctly.", Failed);
-                continue
-            } ,
+                continue;
+            }
         };
 
-        if what_user_wants_to_change == "" {
+        if what_user_wants_to_change.is_empty() {
             let build = Build::new(
                 api_type.clone(),
                 model_type.trim().to_string(),
                 api_key.trim().to_string(),
                 std::path::PathBuf::from(project_folder.trim()),
-                output_name.trim().to_string()
+                output_name.trim().to_string(),
             );
             let exit_received = build.build().await?;
 
-            if exit_received && ask_yes_no("Build process quit by LLM, do you want to save the basic settings (LLM_TYPE, LLM_MODEL, API_KEY) to .env? (Y/N) ") {
+            if exit_received
+                && ask_yes_no(
+                    "Build process quit by LLM, do you want to save the basic settings (LLM_TYPE, LLM_MODEL, API_KEY) to .env? (Y/N) ",
+                )
+            {
                 match save_llm_settings_to_env(api_type.as_str(), api_key.trim(), model_type.trim()) {
                     Ok(_) => printd!("Settings saved to .env", Success),
                     Err(e) => printd!(format!("Failed to save .env: {}", e).as_str(), Failed),
@@ -346,40 +204,207 @@ async fn run() -> Result<(), Error> {
                     .prompt()
                     .unwrap()
                     .to_string();
+
+                if api_type == "LOCAL" {
+                    run_local_mode(None).await?;
+                    return Ok(());
+                }
+
                 model_type = match_model_type(api_type.as_str());
             }
             "MODEL TYPE" => {
                 model_type = match_model_type(api_type.as_str());
             }
             "API KEY" => {
-                print!("~Api Key: ");
-                stdout().flush().unwrap();
-                api_key.clear();
-                stdin()
-                    .read_line(&mut api_key)
-                    .expect("ERROR AT API_KEY_INPUT");
+                api_key = read_line_input("~Api Key: ", "ERROR AT API_KEY_INPUT");
             }
             "PROJECT FOLDER" => {
-                print!("~Project Folder: ");
-                stdout().flush().unwrap();
-                project_folder.clear();
-                stdin()
-                    .read_line(&mut project_folder)
-                    .expect("ERROR AT PROJECT_FOLDER_INPUT");
+                project_folder = read_line_input("~Project Folder: ", "ERROR AT PROJECT_FOLDER_INPUT");
             }
             "OUTPUT NAME" => {
-                print!("~Output File Name: ");
-                stdout().flush().unwrap();
-                output_name.clear();
-                stdin()
-                    .read_line(&mut output_name)
-                    .expect("ERROR AT OUTPUT_INPUT");
+                output_name = read_line_input("~Output File Name: ", "ERROR AT OUTPUT_INPUT");
             }
             _ => {
                 printd!("Unknown selection. Keeping current values.", Failed);
             }
         }
+    }
+}
 
+async fn run_local_mode(model_path_from_env: Option<String>) -> Result<(), Error> {
+    let api_type = "LOCAL".to_string();
+    let mut model_path = match model_path_from_env {
+        Some(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => read_existing_file_path("~Model Full Path (.gguf): "),
+    };
+
+    if !Path::new(&model_path).exists() {
+        printd!("LLM_MODEL in .env is not a valid file path. Asking interactively.", Failed);
+        model_path = read_existing_file_path("~Model Full Path (.gguf): ");
+    }
+
+    let mut llm_model_alias = llama_cpp2::default_model_alias(&model_path);
+    let mut gpu_backend = Select::new("Select GPU backend:", vec!["NVIDIA", "AMD", "CPU"])
+        .prompt()
+        .unwrap()
+        .to_string();
+
+    let mut context_size = read_input_with_default("~Context size", "16384")
+        .parse::<u32>()
+        .unwrap_or(16384);
+    let mut batch_size = read_input_with_default("~Batch size", "2048")
+        .parse::<u32>()
+        .unwrap_or(2048);
+    let mut threads = read_input_with_default("~Threads (0=auto)", "0")
+        .parse::<i32>()
+        .unwrap_or(0);
+
+    let mut model_temperature = read_input_with_default("~Model Temperature", "0.7")
+        .parse::<f32>()
+        .unwrap_or(0.7);
+    let mut model_top_k = read_input_with_default("~Model Top K", "20")
+        .parse::<i32>()
+        .unwrap_or(20);
+    let mut model_top_p = read_input_with_default("~Model Top P", "0.95")
+        .parse::<f32>()
+        .unwrap_or(0.95);
+
+    let mut project_folder = read_line_input("~Project Folder: ", "ERROR AT PROJECT_FOLDER_INPUT");
+    let mut output_name = read_line_input("~Output File Name: ", "ERROR AT OUTPUT_INPUT");
+
+    loop {
+        printd!("Reading local configs...", Debug);
+        printd!(format!("LLM API : {}", api_type).as_str(), Debug);
+        printd!(format!("MODEL PATH : {}", model_path).as_str(), Debug);
+        printd!(format!("MODEL ALIAS : {}", llm_model_alias).as_str(), Debug);
+        printd!(format!("GPU BACKEND : {}", gpu_backend).as_str(), Debug);
+        printd!(format!("CONTEXT SIZE : {}", context_size).as_str(), Debug);
+        printd!(format!("BATCH SIZE : {}", batch_size).as_str(), Debug);
+        printd!(format!("THREADS : {}", threads).as_str(), Debug);
+        printd!(format!("TEMPERATURE : {}", model_temperature).as_str(), Debug);
+        printd!(format!("TOP K : {}", model_top_k).as_str(), Debug);
+        printd!(format!("TOP P : {}", model_top_p).as_str(), Debug);
+        printd!(format!("PROJECT DIR : {}", project_folder.trim()).as_str(), Debug);
+        printd!(format!("OUTPUT FILE : {}", output_name.trim()).as_str(), Debug);
+        print!("Is that build true? (Y/N) ");
+        stdout().flush().unwrap();
+
+        let mut y_n = String::new();
+        stdin()
+            .read_line(&mut y_n)
+            .expect("ERROR AT BUILD_Y_N_INPUT");
+
+        let what_user_wants_to_change = match y_n.trim().chars().next() {
+            Some('N') | Some('n') => Select::new(
+                "Which input you wanting to change?",
+                vec![
+                    "MODEL PATH",
+                    "MODEL ALIAS",
+                    "GPU BACKEND",
+                    "CONTEXT SIZE",
+                    "BATCH SIZE",
+                    "THREADS",
+                    "TEMPERATURE",
+                    "TOP K",
+                    "TOP P",
+                    "PROJECT FOLDER",
+                    "OUTPUT NAME",
+                ],
+            )
+            .prompt()
+            .unwrap()
+            .to_string(),
+            Some('Y') | Some('y') => "".to_string(),
+            _ => {
+                printd!("Unkown input! Please answer correctly.", Failed);
+                continue;
+            }
+        };
+
+        if what_user_wants_to_change.is_empty() {
+            let build = build::LocalBuild::new(
+                model_path.clone(),
+                gpu_backend.clone(),
+                context_size,
+                batch_size,
+                threads,
+                llm_model_alias.clone(),
+                std::path::PathBuf::from(project_folder.trim()),
+                output_name.trim().to_string(),
+                model_temperature,
+                model_top_k,
+                model_top_p,
+            );
+            let exit_received = build.build().await?;
+
+            if exit_received
+                && ask_yes_no(
+                    "Build process quit by LLM, do you want to save LOCAL settings (LLM_TYPE=LOCAL, LLM_MODEL=model_path)? (Y/N) ",
+                )
+            {
+                match save_llm_settings_to_env("LOCAL", "NONE", model_path.as_str()) {
+                    Ok(_) => printd!("Settings saved to .env", Success),
+                    Err(e) => printd!(format!("Failed to save .env: {}", e).as_str(), Failed),
+                }
+            }
+
+            continue;
+        }
+
+        match what_user_wants_to_change.as_str() {
+            "MODEL PATH" => {
+                model_path = read_existing_file_path("~Model Full Path (.gguf): ");
+                llm_model_alias = llama_cpp2::default_model_alias(&model_path);
+            }
+            "MODEL ALIAS" => {
+                llm_model_alias = read_input_with_default("~Model alias", llm_model_alias.as_str());
+            }
+            "GPU BACKEND" => {
+                gpu_backend = Select::new("Select GPU backend:", vec!["NVIDIA", "AMD", "CPU"])
+                    .prompt()
+                    .unwrap()
+                    .to_string();
+            }
+            "CONTEXT SIZE" => {
+                context_size = read_input_with_default("~Context size", context_size.to_string().as_str())
+                    .parse::<u32>()
+                    .unwrap_or(context_size);
+            }
+            "BATCH SIZE" => {
+                batch_size = read_input_with_default("~Batch size", batch_size.to_string().as_str())
+                    .parse::<u32>()
+                    .unwrap_or(batch_size);
+            }
+            "THREADS" => {
+                threads = read_input_with_default("~Threads (0=auto)", threads.to_string().as_str())
+                    .parse::<i32>()
+                    .unwrap_or(threads);
+            }
+            "TEMPERATURE" => {
+                model_temperature = read_input_with_default("~Model Temperature", model_temperature.to_string().as_str())
+                    .parse::<f32>()
+                    .unwrap_or(model_temperature);
+            }
+            "TOP K" => {
+                model_top_k = read_input_with_default("~Model Top K", model_top_k.to_string().as_str())
+                    .parse::<i32>()
+                    .unwrap_or(model_top_k);
+            }
+            "TOP P" => {
+                model_top_p = read_input_with_default("~Model Top P", model_top_p.to_string().as_str())
+                    .parse::<f32>()
+                    .unwrap_or(model_top_p);
+            }
+            "PROJECT FOLDER" => {
+                project_folder = read_line_input("~Project Folder: ", "ERROR AT PROJECT_FOLDER_INPUT");
+            }
+            "OUTPUT NAME" => {
+                output_name = read_line_input("~Output File Name: ", "ERROR AT OUTPUT_INPUT");
+            }
+            _ => {
+                printd!("Unknown selection. Keeping current values.", Failed);
+            }
+        }
     }
 }
 
@@ -388,7 +413,9 @@ fn ask_yes_no(prompt: &str) -> bool {
     stdout().flush().unwrap();
 
     let mut answer = String::new();
-    stdin().read_line(&mut answer).expect("ERROR AT YES_NO_INPUT");
+    stdin()
+        .read_line(&mut answer)
+        .expect("ERROR AT YES_NO_INPUT");
 
     matches!(answer.trim().chars().next(), Some('Y') | Some('y'))
 }
@@ -401,35 +428,41 @@ fn read_line_input(prompt: &str, error_message: &str) -> String {
     value.trim().to_string()
 }
 
+fn read_input_with_default(prompt: &str, default_value: &str) -> String {
+    let mut value = String::new();
+    print!("{} (default {}): ", prompt, default_value);
+    stdout().flush().unwrap();
+    stdin().read_line(&mut value).expect("ERROR AT INPUT");
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        default_value.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn read_existing_file_path(prompt: &str) -> String {
+    loop {
+        let value = read_line_input(prompt, "ERROR AT MODEL_PATH_INPUT");
+        let path = Path::new(&value);
+
+        if path.exists() && path.is_file() {
+            return value;
+        }
+
+        printd!(
+            format!("Model file not found or invalid path: {}", value).as_str(),
+            Failed
+        );
+    }
+}
+
 fn read_env_key(key: &str) -> Option<String> {
     env::var(key)
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
-}
-
-
-fn get_ollama_models(url : &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let normalized = url.trim().trim_end_matches('/');
-    let endpoint = if normalized.ends_with("/api/tags") {
-        normalized.to_string()
-    } else if normalized.ends_with("/v1") {
-        format!("{}/api/tags", normalized.trim_end_matches("/v1"))
-    } else {
-        format!("{}/api/tags", normalized)
-    };
-
-    let resp = reqwest::blocking::get(endpoint.clone())?;
-    let status = resp.status();
-    let raw = resp.text()?;
-
-    if !status.is_success() {
-        return Err(format!("Ollama API error at {}: {}", endpoint, status).into());
-    }
-
-    let data: TagsResponse = serde_json::from_str(&raw)
-        .map_err(|e| format!("Ollama tags decode error at {}: {} | body: {}", endpoint, e, raw))?;
-    Ok(data.models.into_iter().map(|m| m.name).collect())
 }
 
 fn mask_secret(value: &str) -> String {
@@ -498,40 +531,57 @@ fn save_llm_settings_to_env(llm_type: &str, api_key: &str, llm_model: &str) -> s
     fs::write(env_path, content)
 }
 
-fn match_model_type(llm_type : &str) -> String{
-    let llm_models_gemini = vec!["gemini-2.5-flash-lite","gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-flash-lite", "gemini-3.0-flash", "gemini-3.0-pro"];
-    let llm_models_groq = vec!["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3-32b"];
-    
+fn match_model_type(llm_type: &str) -> String {
+    let llm_models_gemini = vec![
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3.0-flash-lite",
+        "gemini-3.0-flash",
+        "gemini-3.0-pro",
+    ];
+    let llm_models_groq = vec![
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3-32b",
+    ];
 
-    let model_type = match llm_type {
-        "GEMINI" => {
-            Select::new("Select Model:", llm_models_gemini).prompt().unwrap().to_string()
-        },
-        "GROQ" => {
-            Select::new("Select Model:", llm_models_groq).prompt().unwrap().to_string()
-        },
-
-       "NVIDIA" => {
-            let mut nvidia_model : String = String::new();
+    match llm_type {
+        "GEMINI" => Select::new("Select Model:", llm_models_gemini)
+            .prompt()
+            .unwrap()
+            .to_string(),
+        "GROQ" => Select::new("Select Model:", llm_models_groq)
+            .prompt()
+            .unwrap()
+            .to_string(),
+        "NVIDIA" => {
+            let mut nvidia_model: String = String::new();
             print!("$~ NVIDIA MODEL : ");
             stdout().flush().unwrap();
-            stdin().read_line(&mut nvidia_model).expect("ERROR AT NVIDIA_MODEL_INPUT");
+            stdin()
+                .read_line(&mut nvidia_model)
+                .expect("ERROR AT NVIDIA_MODEL_INPUT");
             nvidia_model.trim().to_string()
-        },
-
+        }
         "LLMAPI" => {
-            let mut llmapi_model : String = String::new();
+            let mut llmapi_model: String = String::new();
             print!("$~ LLMAPI MODEL : ");
             stdout().flush().unwrap();
-            stdin().read_line(&mut llmapi_model).expect("ERROR AT LLMAPI_MODEL_INPUT");
+            stdin()
+                .read_line(&mut llmapi_model)
+                .expect("ERROR AT LLMAPI_MODEL_INPUT");
             llmapi_model.trim().to_string()
-        },
-
+        }
         _ => {
-            printd!("Model selection process failed because of match did not get any llm_type", Failed);
+            printd!(
+                "Model selection process failed because of match did not get any llm_type",
+                Failed
+            );
             panic!();
         }
-    };
-
-    model_type
+    }
 }

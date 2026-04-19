@@ -39,7 +39,11 @@ pub struct Build {
 }
 
 pub struct LocalBuild {
-    pub ollama_gateway_url : String,
+    pub model_path : String,
+    pub gpu_backend : String,
+    pub context_size : u32,
+    pub batch_size : u32,
+    pub threads : i32,
     pub llm_model : String,
     pub project_dir : PathBuf,
     pub output_file : String,
@@ -49,9 +53,13 @@ pub struct LocalBuild {
 }
 
 impl LocalBuild {
-    pub fn new(ollama_gateway_url : String, llm_model : String, project_dir : PathBuf, output_file : String, temperature : f32, top_k : i32, top_p : f32) -> Self {
+    pub fn new(model_path : String, gpu_backend : String, context_size : u32, batch_size : u32, threads : i32, llm_model : String, project_dir : PathBuf, output_file : String, temperature : f32, top_k : i32, top_p : f32) -> Self {
         LocalBuild {
-            ollama_gateway_url : ollama_gateway_url,
+            model_path,
+            gpu_backend,
+            context_size,
+            batch_size,
+            threads,
             llm_model : llm_model,
             project_dir : project_dir,
             output_file : output_file,
@@ -64,7 +72,11 @@ impl LocalBuild {
     pub async fn build(&self) -> Result<bool, Error> {
         printd!("Building process started!", Success);
         printd!("Reading configs...", Debug);
-        printd!(format!("OLLAMA GATEWAY URL : {}", self.ollama_gateway_url).as_str(), Debug);
+        printd!(format!("MODEL PATH : {}", self.model_path).as_str(), Debug);
+        printd!(format!("GPU BACKEND : {}", self.gpu_backend).as_str(), Debug);
+        printd!(format!("CONTEXT SIZE : {}", self.context_size).as_str(), Debug);
+        printd!(format!("BATCH SIZE : {}", self.batch_size).as_str(), Debug);
+        printd!(format!("THREADS : {}", self.threads).as_str(), Debug);
         printd!(format!("MODEL TYPE : {}", self.llm_model).as_str(), Debug);
         printd!(format!("PROJECT DIR : {}", self.project_dir.to_str().unwrap()).as_str(), Debug);
         printd!(format!("OUTPUT FILE : {}", self.output_file).as_str(), Debug);
