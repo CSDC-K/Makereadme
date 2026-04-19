@@ -32,6 +32,12 @@ MakeREADME is a Rust CLI tool that generates `README.md` files by analyzing a pr
 cargo build --release
 ```
 
+### Bin run (if you downloaded from releases)
+```bash
+./MakeREADME_Linux_x86_64-CachyOs
+```
+
+
 ### 2. Run
 
 ```bash
@@ -84,3 +90,7 @@ src/
 ## License
 
 MIT
+
+
+-- Copilot: for code review and basic changes
+-- Gemini: for researchs
