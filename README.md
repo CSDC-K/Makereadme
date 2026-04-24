@@ -1,6 +1,6 @@
 # MakeREADME
 
-![Rust](https://img.shields.io/badge/Rust-2024_edition-orange?logo=rust)
+![Rust](https://img.shields.io/badge/Rust-2026_edition-orange?logo=rust)
 ![CLI](https://img.shields.io/badge/App-CLI-blue)
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
