@@ -5,61 +5,47 @@
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-MakeREADME is a Rust CLI tool that generates `README.md` files by analyzing a project and running an agentic action loop (`THINK`, `READ`, `WRITE`, `EXIT`) with LLM providers.
+### makereadme is basicly a system orchestrator, thats creates README.md files for your project.
 
-## Features
+## How it's works?
 
-- Multi-provider support: `GEMINI`, `GROQ`, `LLMAPI`, `LOCAL (Ollama)`, `NVIDIA` (WIP)
-- Agentic workflow with controlled action parsing and execution
-- Project tree snapshot + selective file reading for context
-- Environment-based config loading and saving (`.env`)
-- Local model parameters for Ollama (`temperature`, `top_k`, `top_p`)
-- Colored debug/action logs for easier tracing
+### When you give some infos about your project to *makereadme* thats uses some tags to read, think, write about your project.
+```text
+Examples:
 
-## Tech Stack
+Given informations:
 
-- Rust 2024
-- Async runtime: Tokio
-- HTTP: reqwest
-- Serialization: serde / serde_json
-- CLI prompts: inquire
+- path: home/user/desktop/calculator/
+- output name: spicyreadme
+- llm type: GEMINI // or other apis that *makereadme* haves.
 
-## Quick Start
+in backend side we sending a system prompt to LLM and some instructions about how to act,
+then we checking your projects path directly and sending that treeview to LLM
 
-### 1. Build
+and our cheff is starts to cook!
 
+```
+
+## How to run from source code?
+
+### Install project
+```bash
+git clone https://github.com/CSDC-K/Makereadme.git
+```
+### Build with rust
 ```bash
 cargo build --release
 ```
-
-### Bin run (if you downloaded from releases)
+### Run compiled version
 ```bash
-./MakeREADME_Linux_x86_64-CachyOs
+cargo run --release
 ```
 
+## What is the future features?
 
-### 2. Run
-
-```bash
-cargo run
-```
-
-### 3. Optional `.env`
-
-```env
-LLM_TYPE=GEMINI
-LLM_MODEL=gemini-2.5-flash
-API_KEY=your_api_key_here
-```
-
-## Local (Ollama)
-
-- Start Ollama server (default: `127.0.0.1:11434`)
-- Select `LOCAL` in the CLI
-- Provide gateway URL and sampling params when prompted
-- The tool fetches models via Ollama API and runs the same agentic loop locally
-
-## Project Structure
+### *1: LLAMA_CPP_2 for local models*
+### *2: New apis (nvidia and more will coming soon)*
+### *3: Improvable system prompt (user can add some comments into prompt via CLI)*
 
 ```text
 src/
@@ -82,15 +68,5 @@ src/
     prompt.rs
 ```
 
-## Notes
-
-- For stable action-format behavior with local models, use low sampling values (e.g. `temperature=0.2`, `top_p=0.9`, `top_k=40`).
-- If a model returns plain prose instead of action tags, runtime guards now request strict tagged output.
-
-## License
-
-MIT
-
-
--- Copilot: for code review and basic changes
--- Gemini: for researchs
+-- Copilot: for code review and basic changes (tab + action executer)
+-- Gemini: for researchs (not for codes)
