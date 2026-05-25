@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use crate::printd;
 
-const MAX_ACTIONS_PER_RESPONSE: usize = 3;
 const MAX_TREE_DEPTH: usize = 6;
 const MAX_TREE_ENTRIES: usize = 400;
 
@@ -17,6 +16,8 @@ pub fn project_tree_snapshot(project_dir: &PathBuf) -> String {
 pub enum Action {
     Think(String),
     Read(String),
+    Note(String),
+    GetNote(String),
     Write(String),
     Exit,
 }
@@ -45,44 +46,15 @@ pub fn parse_actions(response: &str) -> Vec<Action> {
         }
     }
 
-    // THINK tags do NOT count toward the action limit
     let think_count = all_actions.iter().filter(|a| matches!(a, Action::Think(_))).count();
     let non_think_count = all_actions.iter().filter(|a| !matches!(a, Action::Think(_))).count();
-
-    if non_think_count > MAX_ACTIONS_PER_RESPONSE {
-        printd!(
-            format!(
-                "Action limit exceeded! Found {} non-THINK actions, max allowed is {}. Truncating.",
-                non_think_count,
-                MAX_ACTIONS_PER_RESPONSE
-            )
-            .as_str(),
-            Failed
-        );
-
-        // Keep all THINKs, truncate only READ/WRITE/EXIT to the limit
-        let mut kept: Vec<Action> = Vec::new();
-        let mut rw_count = 0;
-        for action in all_actions {
-            match &action {
-                Action::Think(_) => kept.push(action),
-                _ => {
-                    if rw_count < MAX_ACTIONS_PER_RESPONSE {
-                        kept.push(action);
-                        rw_count += 1;
-                    }
-                }
-            }
-        }
-        all_actions = kept;
-    }
 
     printd!(
         format!(
             "Parsed {} action(s) from LLM response ({} THINK, {} non-THINK)",
             all_actions.len(),
             think_count,
-            non_think_count.min(MAX_ACTIONS_PER_RESPONSE)
+            non_think_count
         )
         .as_str(),
         Debug
@@ -93,6 +65,8 @@ pub fn parse_actions(response: &str) -> Vec<Action> {
 
 fn extract_next_action(input: &str) -> Option<(Action, &str)> {
     let read_start = find_tag_ci(input, "<READ>");
+    let note_start = find_tag_ci(input, "<NOTE>");
+    let getnote_start = find_tag_ci(input, "<GETNOTE>");
     let write_start = find_tag_ci(input, "<WRITE>");
     let think_start = find_tag_ci(input, "<THINK>");
     let exit_start = find_tag_ci(input, "<EXIT>");
@@ -103,6 +77,8 @@ fn extract_next_action(input: &str) -> Option<(Action, &str)> {
         write_start.map(|p| (p, 1u8)),
         think_start.map(|p| (p, 2u8)),
         exit_start.map(|p| (p, 3u8)),
+        note_start.map(|p| (p, 4u8)),
+        getnote_start.map(|p| (p, 5u8)),
     ]
     .iter()
     .filter_map(|x| *x)
@@ -115,6 +91,8 @@ fn extract_next_action(input: &str) -> Option<(Action, &str)> {
         1 => extract_write(input, earliest.0),
         2 => extract_think(input, earliest.0),
         3 => extract_exit(input, earliest.0),
+        4 => extract_note(input, earliest.0),
+        5 => extract_getnote(input, earliest.0),
         _ => None,
     }
 }
@@ -167,6 +145,34 @@ fn extract_read(input: &str, start: usize) -> Option<(Action, &str)> {
     printd!(format!("Extracted READ action: {}", content).as_str(), Debug);
 
     Some((Action::Read(content.to_string()), rest))
+}
+
+fn extract_note(input: &str, start: usize) -> Option<(Action, &str)> {
+    let open_tag = "<NOTE>";
+    let close_tag = "</NOTE>";
+
+    let content_start = start + open_tag.len();
+    let close_pos = find_tag_ci(&input[content_start..], close_tag)?;
+    let content = input[content_start..content_start + close_pos].trim();
+    let rest = &input[content_start + close_pos + close_tag.len()..];
+
+    printd!(format!("Extracted NOTE action: {} chars", content.len()).as_str(), Debug);
+
+    Some((Action::Note(content.to_string()), rest))
+}
+
+fn extract_getnote(input: &str, start: usize) -> Option<(Action, &str)> {
+    let open_tag = "<GETNOTE>";
+    let close_tag = "</GETNOTE>";
+
+    let content_start = start + open_tag.len();
+    let close_pos = find_tag_ci(&input[content_start..], close_tag)?;
+    let content = input[content_start..content_start + close_pos].trim();
+    let rest = &input[content_start + close_pos + close_tag.len()..];
+
+    printd!(format!("Extracted GETNOTE action: {} chars", content.len()).as_str(), Debug);
+
+    Some((Action::GetNote(content.to_string()), rest))
 }
 
 fn extract_write(input: &str, start: usize) -> Option<(Action, &str)> {
@@ -240,6 +246,28 @@ pub fn execute_actions(
                     action: action.clone(),
                     success: true,
                     content: thought.clone(),
+                }
+            }
+            Action::Note(note_content) => {
+                printd!(
+                    format!("LLM NOTE: {}", note_content).as_str(),
+                    LLM
+                );
+                ActionResult {
+                    action: action.clone(),
+                    success: true,
+                    content: format!("Noted: {}", note_content),
+                }
+            }
+            Action::GetNote(query) => {
+                printd!(
+                    format!("LLM GETNOTE query: {}", query).as_str(),
+                    LLM
+                );
+                ActionResult {
+                    action: action.clone(),
+                    success: true,
+                    content: format!("Retrieved notes for: {}", query),
                 }
             }
             Action::Read(file_path) => execute_read(project_dir, file_path),
@@ -451,7 +479,7 @@ fn execute_write(project_dir: &PathBuf, output_file: &str, content: &str) -> Act
         Debug
     );
 
-    // Overwrite modunda aç — dosya yoksa oluştur
+    
     use std::fs::OpenOptions;
     use std::io::Write;
 
@@ -475,7 +503,7 @@ fn execute_write(project_dir: &PathBuf, output_file: &str, content: &str) -> Act
     match OpenOptions::new()
         .create(true)
         .write(true)
-        .truncate(true)
+        .append(true) // Dosyayı sıfırlamak (truncate) yerine sonuna eklemeliyiz (append)
         .open(&full_path)
     {
         Ok(mut file) => match file.write_all(content.as_bytes()) {
@@ -530,6 +558,12 @@ pub fn build_context_from_results(results: &[ActionResult]) -> String {
         match &result.action {
             Action::Think(_) => {
                 // THINK actions are internal — not included in context sent back to LLM
+            }
+            Action::Note(note) => {
+                context.push_str(&format!("--- NOTE ---\n{}\n--- END NOTE ---\n\n", note));
+            }
+            Action::GetNote(query) => {
+                context.push_str(&format!("--- RETRIEVED NOTES FOR: {} ---\n{}\n--- END NOTES ---\n\n", query, result.content));
             }
             Action::Read(path) => {
                 if result.success {

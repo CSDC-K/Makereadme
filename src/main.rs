@@ -6,7 +6,7 @@ pub mod libs {
     pub mod action_executer;   // Action execution utilities for the application, providing functions to execute various actions.
     pub mod memory;            // Memory management utilities for the application, providing functions to manage memory allocation and deallocation.
     pub mod errors;            // Error handling utilities for the application, providing functions to handle and report errors.
-    pub mod prompt;            // Prompt management utilities for the application, providing functions to create and manage prompts.
+    pub mod optlib;            // Prompt management utilities for the application, providing functions to create and manage prompts.
 }
 
 pub mod apis {
@@ -37,6 +37,8 @@ use libs::errors::Error;        // Error Handling
 use crate::libs::build;
 use crate::local::llama_cpp2;
 
+
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -46,7 +48,21 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Error> {
-    let api_types_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
+    // Check if LOCAL mode is set in env
+    if let Ok(env_llm_type) = env::var("LLM_TYPE") {
+        if env_llm_type.trim() == "LOCAL" {
+            return run_local_mode(env::var("LLM_MODEL").ok()).await;
+        }
+    }
+
+    let api_types_vec = vec![
+        "LOCAL",
+        "GEMINI",
+        "GROQ",
+        "LLMAPI",
+        "NVIDIA",
+    ];
+    let api_types_env_vec = vec!["LOCAL", "GEMINI", "GROQ", "LLMAPI", "NVIDIA"];
     let banner: String = r#"
 ▗▖  ▗▖ ▗▄▖ ▗▖ ▗▖▗▄▄▄▖▗▄▄▖ ▗▄▄▄▖ ▗▄▖ ▗▄▄▄  ▗▖  ▗▖▗▄▄▄▖
 ▐▛▚▞▜▌▐▌ ▐▌▐▌▗▞▘▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▌  █ ▐▛▚▞▜▌▐▌
@@ -90,27 +106,28 @@ async fn run() -> Result<(), Error> {
     let mut api_type: String;
     let mut model_type: String;
     let mut api_key: String;
+    let mut token_optimization_level = OptimizationLevel::None;
 
     if load_env_file {
         api_type = read_env_key("LLM_TYPE").unwrap_or_default();
 
-        if api_type.is_empty() || !api_types_vec.contains(&api_type.as_str()) {
+        if api_type.is_empty() || !api_types_env_vec.contains(&api_type.as_str()) {
             if !api_type.is_empty() {
                 printd!(
                     format!("Invalid LLM_TYPE in .env: '{}'. Asking interactively.", api_type).as_str(),
                     Failed
                 );
             }
-            api_type = Select::new("Select Api type:", api_types_vec.clone())
-                .prompt()
-                .unwrap()
-                .to_string();
+            api_type = select_supported_api_type(&api_types_vec);
         }
 
         if api_type == "LOCAL" {
-            let model_from_env = read_env_key("LLM_MODEL");
-            run_local_mode(model_from_env).await?;
-            return Ok(());
+            return run_local_mode(read_env_key("LLM_MODEL")).await;
+        }
+
+        if api_type == "NVIDIA" {
+            printd!("This API is coming soon in the test build. Please choose another option.", Failed);
+            api_type = select_supported_api_type(&api_types_vec);
         }
 
         model_type = read_env_key("LLM_MODEL").unwrap_or_default();
@@ -128,28 +145,39 @@ async fn run() -> Result<(), Error> {
 
         printd!("Loaded llm type, model, and api key from .env", Success);
     } else {
-        api_type = Select::new("Select Api type:", api_types_vec.clone())
-            .prompt()
-            .unwrap()
-            .to_string();
+        let selected_api = select_supported_api_type(&api_types_vec);
+        api_type = selected_api.clone();
 
         if api_type == "LOCAL" {
-            run_local_mode(None).await?;
-            return Ok(());
+            return run_local_mode(None).await;
         }
 
         model_type = match_model_type(api_type.as_str());
+        let token_optimzation_level_str = Select::new(
+            "Select token optimization level:",
+            vec!["None (Default Optimization, Highest Quality)", "Basic (Quality is lower then Default but more token efficient)", "Medium (Medium Quality but more token efficient then Basic)", "Aggressive (Worst quality but most token efficient. WARNING: sometimes your model can break rules.)"],
+        )            .prompt().unwrap();
+        token_optimization_level =  match token_optimzation_level_str{
+            "None (Default Optimization, Highest Quality)" => OptimizationLevel::None,
+            "Basic (Quality is lower then Default but more token efficient)" => OptimizationLevel::Basic,
+            "Medium (Medium Quality but more token efficient then Basic)" => OptimizationLevel::Medium,
+            "Aggressive (Worst quality but most token efficient. WARNING: sometimes your model can break rules.)" => OptimizationLevel::Aggressive,
+            _ => OptimizationLevel::None,
+        };
         api_key = read_line_input("~Api Key: ", "ERROR AT API_KEY_INPUT");
     }
 
     let mut project_folder = read_line_input("~Project Folder: ", "ERROR AT PROJECT_FOLDER_INPUT");
     let mut output_name = read_line_input("~Output File Name: ", "ERROR AT OUTPUT_INPUT");
-
     loop {
         printd!("Reading configs...", Debug);
-        printd!(format!("LLM API : {}", api_type.as_str()).as_str(), Debug);
-        printd!(format!("MODEL TYPE : {}", model_type.as_str()).as_str(), Debug);
-        printd!(format!("API KEY : {}", mask_secret(api_key.trim())).as_str(), Debug);
+        let api_type_display = api_type.as_str();
+        let model_display = model_type.as_str();
+        let api_key_display = mask_secret(api_key.trim());
+
+        printd!(format!("LLM API : {}", api_type_display).as_str(), Debug);
+        printd!(format!("MODEL TYPE : {}", model_display).as_str(), Debug);
+        printd!(format!("API KEY : {}", api_key_display).as_str(), Debug);
         printd!(format!("PROJECT DIR : {}", project_folder.trim()).as_str(), Debug);
         printd!(format!("OUTPUT FILE : {}", output_name.trim()).as_str(), Debug);
         print!("Is that build true? (Y/N) ");
@@ -161,13 +189,14 @@ async fn run() -> Result<(), Error> {
             .expect("ERROR AT BUILD_Y_N_INPUT");
 
         let what_user_wants_to_change = match y_n.trim().chars().next() {
-            Some('N') | Some('n') => Select::new(
-                "Which input you wanting to change?",
-                vec!["API TYPE", "MODEL TYPE", "API KEY", "PROJECT FOLDER", "OUTPUT NAME"],
-            )
-            .prompt()
-            .unwrap(),
-            Some('Y') | Some('y') => "",
+            Some('N') | Some('n') => {
+                let change_options = vec!["API TYPE", "MODEL TYPE", "API KEY", "PROJECT FOLDER", "OUTPUT NAME"];
+                Select::new("Which input you wanting to change?", change_options)
+                    .prompt()
+                    .unwrap()
+                    .to_string()
+            }
+            Some('Y') | Some('y') => String::new(),
             _ => {
                 printd!("Unkown input! Please answer correctly.", Failed);
                 continue;
@@ -181,14 +210,13 @@ async fn run() -> Result<(), Error> {
                 api_key.trim().to_string(),
                 std::path::PathBuf::from(project_folder.trim()),
                 output_name.trim().to_string(),
+                token_optimization_level.clone(),
             );
             let exit_received = build.build().await?;
 
-            if exit_received
-                && ask_yes_no(
-                    "Build process quit by LLM, do you want to save the basic settings (LLM_TYPE, LLM_MODEL, API_KEY) to .env? (Y/N) ",
-                )
-            {
+            if exit_received && ask_yes_no(
+                "Build process quit by LLM, do you want to save the basic settings (LLM_TYPE, LLM_MODEL, API_KEY) to .env? (Y/N) ",
+            ) {
                 match save_llm_settings_to_env(api_type.as_str(), api_key.trim(), model_type.trim()) {
                     Ok(_) => printd!("Settings saved to .env", Success),
                     Err(e) => printd!(format!("Failed to save .env: {}", e).as_str(), Failed),
@@ -198,19 +226,15 @@ async fn run() -> Result<(), Error> {
             continue;
         }
 
-        match what_user_wants_to_change {
+        match what_user_wants_to_change.as_str() {
             "API TYPE" => {
-                api_type = Select::new("Select Api type:", api_types_vec.clone())
-                    .prompt()
-                    .unwrap()
-                    .to_string();
-
+                let selected_api = select_supported_api_type(&api_types_vec);
+                api_type = selected_api;
                 if api_type == "LOCAL" {
-                    run_local_mode(None).await?;
-                    return Ok(());
+                    return run_local_mode(None).await;
                 }
-
                 model_type = match_model_type(api_type.as_str());
+                api_key = read_line_input("~Api Key: ", "ERROR AT API_KEY_INPUT");
             }
             "MODEL TYPE" => {
                 model_type = match_model_type(api_type.as_str());
@@ -228,6 +252,25 @@ async fn run() -> Result<(), Error> {
                 printd!("Unknown selection. Keeping current values.", Failed);
             }
         }
+    }
+}
+
+fn select_supported_api_type(api_types: &[&str]) -> String {
+    loop {
+        let selected = Select::new("Select Api type:", api_types.to_vec())
+            .prompt()
+            .unwrap()
+            .to_string();
+
+        if selected == "LOCAL" {
+            printd!("LOCAL mode will be initialized...", Debug);
+            return selected;
+        }
+        if selected == "NVIDIA" {
+            printd!("This API is coming soon in the test build. Please choose another option.", Failed);
+            continue;
+        }
+        return selected;
     }
 }
 

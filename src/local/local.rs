@@ -21,7 +21,8 @@ pub async fn create_communication_local(
             build_content.output_file.clone(),
             build_content.temperature,
             build_content.top_k,
-            build_content.top_p
+            build_content.top_p,
+            build_content.optlevel.clone()
     ).await?;
 
 

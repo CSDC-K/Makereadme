@@ -20,6 +20,13 @@ fn mask_secret(value: &str) -> String {
     let middle_mask = "*".repeat(chars.len() - 6);
     format!("{}{}{}", prefix, middle_mask, suffix)
 }
+#[derive(Clone)]
+pub enum OptimizationLevel {
+    None,
+    Basic,
+    Medium,
+    Aggressive,
+}
 
 pub enum ApiType {
     GEMINI,
@@ -35,7 +42,8 @@ pub struct Build {
     LLM_MODEL : String,
     API_KEY : String,
     PROJECT_DIR : PathBuf,
-    OUTPUT_FILE : String
+    OUTPUT_FILE : String,
+    TOKEN_OPTIMIZATION_LEVEL : OptimizationLevel
 }
 
 pub struct LocalBuild {
@@ -49,7 +57,8 @@ pub struct LocalBuild {
     pub output_file : String,
     pub temperature : f32,
     pub top_k : i32,
-    pub top_p : f32
+    pub top_p : f32,
+    pub optlevel : OptimizationLevel
 }
 
 impl LocalBuild {
@@ -65,7 +74,8 @@ impl LocalBuild {
             output_file : output_file,
             temperature : temperature,
             top_k : top_k,
-            top_p : top_p
+            top_p : top_p,
+            optlevel : OptimizationLevel::Basic
         }
     }
 
@@ -92,13 +102,14 @@ impl LocalBuild {
 }
 
 impl Build {
-    pub fn new(api_type : String, llm_model : String, api_key : String, project_dir : PathBuf, output_file : String) -> Self {
+    pub fn new(api_type : String, llm_model : String, api_key : String, project_dir : PathBuf, output_file : String, token_optimization_level : OptimizationLevel) -> Self {
         Build {
             API_TYPE : api_type,
             LLM_MODEL : llm_model,
             API_KEY : api_key,
             PROJECT_DIR : project_dir,
-            OUTPUT_FILE : output_file
+            OUTPUT_FILE : output_file,
+            TOKEN_OPTIMIZATION_LEVEL : token_optimization_level
         }
     }
 
@@ -130,6 +141,7 @@ impl Build {
             self.API_KEY.clone(),
             &self.PROJECT_DIR,
             self.OUTPUT_FILE.clone(),
+            self.TOKEN_OPTIMIZATION_LEVEL.clone()
         )
         .await
         {

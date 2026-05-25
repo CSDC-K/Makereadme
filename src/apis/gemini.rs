@@ -4,7 +4,9 @@ use tokio::time::{sleep, Duration};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::libs::build::OptimizationLevel;
 use crate::libs::memory::HistoryEntry;
+use crate::libs::optlib;
 use crate::printd;
 use crate::libs::action_executer::{self, ActionResult};
 use crate::libs::errors::Error;
@@ -65,13 +67,16 @@ pub async fn create_communication(
     model_type: String,
     project_dir : &PathBuf,
     output_file: &str,
+    opt_level : OptimizationLevel
 ) -> Result<bool, Error> {
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
         model_type
     );
 
-    let mut temporary_memory = crate::libs::memory::Memory::default();
+    let mut opt_profile = optlib::OptProfile::default(opt_level.clone());
+    let system_prompt = opt_profile.prompt.clone();
+    let mut temporary_memory = crate::libs::memory::Memory::default(opt_profile);
     let project_tree = action_executer::project_tree_snapshot(project_dir);
     let tree_context = format!("PROJECT DIRECTORY TREE:\n{}", project_tree);
 
@@ -107,18 +112,6 @@ pub async fn create_communication(
     temporary_memory.append_to_history(
         HistoryEntry{
             content: system_prompt.clone(),
-            role: "User".to_string(),
-    });
-
-    temporary_memory.append_to_history(
-        HistoryEntry{
-            content: "Understood. I will follow the instructions above.".to_string(),
-            role: "Model".to_string(),
-    });
-
-    temporary_memory.append_to_history(
-        HistoryEntry{
-            content: "MAKEREADME AGENTIC LOOP IS STARTED, START TALKING".to_string(),
             role: "User".to_string(),
     });
 
@@ -237,7 +230,9 @@ pub async fn create_communication(
 async fn create_gemini_response(api_key: String, client: Client, url : String, action_results: Vec<ActionResult>, temporary_memory: &mut crate::libs::memory::Memory) -> Result<String, Error> {
 
     for action_result in action_results {
-        temporary_memory.append_to_result(action_result);
+            if let action_executer::Action::Note(note_content) = &action_result.action {
+                temporary_memory.append_to_agentic_notes(note_content.clone());
+            }
     }
 
 

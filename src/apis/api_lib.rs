@@ -1,16 +1,17 @@
 use std::path::PathBuf;
 
-use crate::libs::build::ApiType;
+use crate::libs::build::*;
 use crate::printd;
 use crate::apis::*;
 use crate::libs::errors::Error;
-use crate::libs::prompt::Prompt;
+use crate::libs::optlib::OptProfile;
 
 
-pub async fn api_lib(api_type: ApiType, model_type: String, api_key: String, project_dir: &PathBuf, output_file: String) -> Result<bool, Error> {
+pub async fn api_lib(api_type: ApiType, model_type: String, api_key: String, project_dir: &PathBuf, output_file: String, token_optimization: OptimizationLevel) -> Result<bool, Error> {
     printd!("API Library is being integrated...", Debug);
     
-    let system_prompt = Prompt::default().content;
+    let opt_profile = OptProfile::default(token_optimization.clone());
+    let system_prompt = opt_profile.prompt;
 
     match api_type {
         ApiType::GROQ => {
@@ -21,6 +22,7 @@ pub async fn api_lib(api_type: ApiType, model_type: String, api_key: String, pro
                 model_type,
                 project_dir,
                 output_file.as_str(),
+                token_optimization.clone()
             ).await
         },
         ApiType::GEMINI => {
@@ -31,6 +33,7 @@ pub async fn api_lib(api_type: ApiType, model_type: String, api_key: String, pro
                 model_type,
                 project_dir,
                 output_file.as_str(),
+                token_optimization.clone()
             ).await {
                 Ok(exit_received) => {
                     printd!("Gemini communication completed", Success);
@@ -47,6 +50,7 @@ pub async fn api_lib(api_type: ApiType, model_type: String, api_key: String, pro
                 model_type,
                 project_dir,
                 output_file.as_str(),
+                token_optimization.clone()
             ).await {
                 Ok(exit_received) => {
                     printd!("LLMAPI communication completed", Success);

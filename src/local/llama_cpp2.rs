@@ -9,10 +9,10 @@ use llama_cpp_2::model::{AddBos, LlamaModel, Special};
 use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::{LlamaBackendDeviceType, list_llama_ggml_backend_devices};
 
-use crate::libs::action_executer::{self, ActionResult};
+use crate::libs::{action_executer::{self, ActionResult}, optlib::OptProfile};
 use crate::libs::errors::Error;
 use crate::libs::memory::HistoryEntry;
-use crate::libs::prompt;
+use crate::libs::{build::OptimizationLevel, optlib};
 use crate::printd;
 
 pub async fn local_model_inference(
@@ -27,6 +27,7 @@ pub async fn local_model_inference(
     temperature: f32,
     top_k: i32,
     top_p: f32,
+    opt_profile: OptimizationLevel
 ) -> Result<bool, Error> {
     ensure_model_file_exists(&model_path)?;
 
@@ -131,6 +132,7 @@ pub async fn local_model_inference(
         temperature,
         top_k,
         top_p,
+        opt_profile
     )
     .await
 }
@@ -147,11 +149,13 @@ async fn run_action_loop(
     temperature: f32,
     top_k: i32,
     top_p: f32,
+    optlevel : OptimizationLevel
 ) -> Result<bool, Error> {
-    let mut temporary_memory = crate::libs::memory::Memory::default();
+    let opt_profile = OptProfile::default(optlevel.clone());
+    let system_prompt = opt_profile.prompt.clone();
+    let mut temporary_memory = crate::libs::memory::Memory::default(opt_profile);
     let project_tree = action_executer::project_tree_snapshot(&project_dir);
     let tree_context = format!("PROJECT DIRECTORY TREE:\n{}", project_tree);
-    let system_prompt = prompt::Prompt::default().content;
 
     temporary_memory.append_to_history(HistoryEntry {
         content: system_prompt,
