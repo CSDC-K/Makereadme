@@ -46,8 +46,8 @@ cargo run --release
 
 ## What is the future features?
 
-### *1: LLAMA_CPP_2 for local models*
-### *2: New apis (nvidia and more will coming soon)*
+### *1: Local LLM: integration of llama.cpp*
+### *2: Provide More Apis: nvidia or other use to free apis.*
 ### *3: Improvable system prompt (user can add some comments into prompt via CLI)*
 
 ```text
@@ -71,5 +71,10 @@ src/
     prompt.rs
 ```
 
--- Copilot: for code review and basic changes (tab + action executer)
--- Gemini: for researchs (not for codes)
+## Used AIs
+
+| LLM | Usage |
+| --- |  ---  |
+| Copilot | Action Executer and catcher |
+| Gemini | For Researchs |
+
