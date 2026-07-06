@@ -26,6 +26,9 @@ and our cheff is starts to cook!
 
 ```
 
+## Example of usage
+<img src="./docs/makereadme_demo.gif" alt="MakeREADME Engine Pipeline" width="100%" max-width="800px" />
+
 ## How to run from source code?
 
 ### Install project
